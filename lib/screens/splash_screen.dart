@@ -14,13 +14,11 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // Navigate to main menu after a short delay
+    // Navigate to Menu after 3 seconds
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const MainMenuScreen()),
-        );
+            context, MaterialPageRoute(builder: (_) => const MainMenuScreen()));
       }
     });
   }
@@ -31,27 +29,30 @@ class _SplashScreenState extends State<SplashScreen> {
       backgroundColor: AppConstants.backgroundColor,
       body: Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment
-              .center, // Fixed: Corrected from MainValueAlignment
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              'SOS',
+            // Your logo image from assets
+            Image.asset(
+              'assets/logo.png',
+              width: 180,
+              height: 180,
+            )
+                .animate()
+                .fadeIn(duration: 800.ms)
+                .scale(delay: 200.ms, curve: Curves.elasticOut),
+
+            const SizedBox(height: 20),
+
+            // Subtitle text
+            const Text(
+              "GRID BATTLE",
               style: TextStyle(
-                fontSize: 80,
+                color: Colors.white70,
+                fontSize: 18,
+                letterSpacing: 6,
                 fontWeight: FontWeight.bold,
-                color: AppConstants.player1Color,
-                letterSpacing: 10,
               ),
-            ).animate().fadeIn(duration: 1.seconds).scale(),
-            const SizedBox(height: 10),
-            Text(
-              'GRID BATTLE',
-              style: TextStyle(
-                fontSize: 20,
-                color: Colors.white.withOpacity(0.7),
-                letterSpacing: 4,
-              ),
-            ).animate().fadeIn(delay: 500.ms),
+            ).animate().fadeIn(delay: 1.seconds),
           ],
         ),
       ),

@@ -14,16 +14,28 @@ dependencies:
   audioplayers: ^5.2.1
   google_fonts: ^6.1.0
   flutter_animate: ^4.5.0
-  # vibration dependency removed to fix build error
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: "^0.13.1"
 
 flutter:
   uses-material-design: true
   assets:
+    - assets/logo.png
     - assets/sounds/placement.mp3
     - assets/sounds/score.mp3
     - assets/sounds/victory.mp3
+    # Add these if you are using the Battle Mode features:
+    # - assets/sounds/explosion.mp3
+    # - assets/sounds/perk.mp3
+
+# THIS BLOCK MUST BE AT THE ROOT (NO INDENTATION)
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/logo.png"
+  adaptive_icon_background: "#0F0F0F"
+  adaptive_icon_foreground: "assets/logo.png"

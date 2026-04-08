@@ -71,11 +71,14 @@ class ScoreBoard extends StatelessWidget {
   Widget _buildPlayerCard(Player player, bool isActive) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+// Inside _buildPlayerCard, update the BoxDecoration:
       decoration: BoxDecoration(
         color: isActive ? player.color.withOpacity(0.15) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: isActive ? player.color : Colors.white10, width: 2),
+          color: isActive ? player.color : Colors.white.withOpacity(0.5),
+          width: 0.5, // Standardized width
+        ),
       ),
       child: Column(
         children: [

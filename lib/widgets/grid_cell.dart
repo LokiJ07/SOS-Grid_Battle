@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/cell_model.dart';
 import '../providers/game_provider.dart';
+import '../models/cell_model.dart';
 import '../models/player.dart';
 
 class GridCell extends StatelessWidget {
@@ -17,11 +17,14 @@ class GridCell extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: cell.isRevealed && cell.specialType != SpecialType.none
-              ? Colors.white.withOpacity(0.05)
+              ? Colors.white.withOpacity(0.1)
               : const Color(0xFF151515),
+          // SHARP WHITE BORDER
           border: Border.all(
-            color: Colors.white.withOpacity(0.05), // Uniform thin borders
-            width: 0.2,
+            color: cell.isPartOfSOS
+                ? Colors.yellow
+                : Colors.white.withOpacity(0.5),
+            width: 0.5,
           ),
         ),
         child: Center(

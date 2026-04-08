@@ -1,30 +1,28 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:sos_grid_battle/main.dart';
+import 'package:sos_grid_battle/widgets/game_logo.dart';
+import 'package:sos_grid_battle/services/storage_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const Sos_Grid_BattleApp());
+  // Setup for SharedPreferences to prevent the test from crashing during init
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    await StorageService.init();
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('App smoke test - verifies splash screen and logo load',
+      (WidgetTester tester) async {
+    // 1. Build our app (SOSGridBattle is the class name in main.dart)
+    await tester.pumpWidget(const SOSGridBattle());
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // 2. Verify that the GameLogo widget is present on the splash screen
+    expect(find.byType(GameLogo), findsOneWidget);
 
-    // Verify that our counter has incremented.
+    // 3. Verify that the text "GRID BATTLE" is visible
+    expect(find.text('GRID BATTLE'), findsOneWidget);
+
+    // 4. Verify that counter-related widgets from the old test DON'T exist
     expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
   });
 }

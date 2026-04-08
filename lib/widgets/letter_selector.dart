@@ -34,10 +34,14 @@ class LetterSelector extends StatelessWidget {
       child: Container(
         width: size,
         height: size,
+// Inside _buildBtn, update the BoxDecoration:
         decoration: BoxDecoration(
           color: sel ? color : Colors.white10,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: sel ? Colors.white : Colors.transparent),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.5),
+            width: 0.5, // Clean white border
+          ),
         ),
         child: Center(
           child: Text(val,

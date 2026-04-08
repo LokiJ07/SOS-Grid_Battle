@@ -14,41 +14,52 @@ class MainMenuScreen extends StatelessWidget {
     return Scaffold(
       body: SafeArea(
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'SOS',
-                style: TextStyle(fontSize: 64, fontWeight: FontWeight.normal),
-              ),
-              const SizedBox(height: 50),
-              MenuButton(
-                label: 'PLAY',
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const BoardSizeScreen())),
-              ),
-              MenuButton(
-                label: 'HOW TO PLAY',
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const HowToPlayScreen())),
-              ),
-              MenuButton(
-                label: 'STATISTICS',
-                onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const StatisticsScreen())),
-              ),
-              MenuButton(
-                label: 'SETTINGS',
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const SettingsScreen())),
-              ),
-              MenuButton(
-                label: 'EXIT',
-                onPressed: () => SystemNavigator.pop(),
-              ),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Small logo at the top of the menu
+                Image.asset(
+                  'assets/logo.png',
+                  width: 120,
+                  height: 120,
+                ),
+                const SizedBox(height: 40),
+
+                MenuButton(
+                  label: 'PLAY',
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const BoardSizeScreen())),
+                ),
+                MenuButton(
+                  label: 'HOW TO PLAY',
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const HowToPlayScreen())),
+                ),
+                MenuButton(
+                  label: 'STATISTICS',
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const StatisticsScreen())),
+                ),
+                MenuButton(
+                  label: 'SETTINGS',
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const SettingsScreen())),
+                ),
+                MenuButton(
+                  label: 'EXIT',
+                  onPressed: () => SystemNavigator.pop(),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -23,7 +23,8 @@ class GameBoard extends StatelessWidget {
             width: boardSide,
             height: boardSide,
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.white10, width: 1),
+              border: Border.all(
+                  color: Colors.white.withOpacity(1), width: 1), // Outer border
             ),
             child: InteractiveViewer(
               minScale: 1.0,
