@@ -7,18 +7,24 @@ class Player {
   final String name;
   final Color color;
   int score;
-  int lives; // NEW: 10 lives system
+  double lives; // Changed to double for half-heart support
+  int streak;
+  bool isStunned;
 
   Player({
     required this.id,
     required this.name,
     required this.color,
     this.score = 0,
-    this.lives = 10,
+    this.lives = 10.0,
+    this.streak = 1,
+    this.isStunned = false,
   });
 
-  void reset(int initialLives) {
+  void reset(double initialLives) {
     score = 0;
     lives = initialLives;
+    streak = 1;
+    isStunned = false;
   }
 }

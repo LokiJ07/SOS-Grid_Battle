@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import '../models/cell_model.dart';
 import '../providers/game_provider.dart';
 import '../models/player.dart';
-import '../core/constants.dart';
 
 class GridCell extends StatelessWidget {
   final int index;
@@ -11,49 +10,40 @@ class GridCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // We use select to only rebuild this cell when its specific data changes
     final cell = context.select((GameProvider p) => p.grid[index]);
 
     return GestureDetector(
       onTap: () => context.read<GameProvider>().playMove(index),
       child: Container(
         decoration: BoxDecoration(
-          color: AppConstants.surfaceColor,
-          borderRadius: BorderRadius.circular(4),
-          boxShadow: cell.isPartOfSOS
-              ? [
-                  BoxShadow(
-                      color: AppConstants.highlightColor.withOpacity(0.5),
-                      blurRadius: 4,
-                      spreadRadius: 1)
-                ]
-              : [],
-          border: cell.isPartOfSOS
-              ? Border.all(color: AppConstants.highlightColor, width: 1)
-              : null,
+          color: cell.isRevealed && cell.specialType != SpecialType.none
+              ? Colors.white.withOpacity(0.05)
+              : const Color(0xFF151515),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.05), // Uniform thin borders
+            width: 0.2,
+          ),
         ),
         child: Center(
           child: cell.letter.isEmpty
               ? null
-              : Text(
-                  cell.letter,
-                  style: TextStyle(
-                    color: cell.placedBy == PlayerID.player1
-                        ? AppConstants.player1Color
-                        : AppConstants.player2Color,
-                    fontWeight: FontWeight.bold,
-                    fontSize: _getFontSize(context),
+              : FittedBox(
+                  fit: BoxFit.contain,
+                  child: Padding(
+                    padding: const EdgeInsets.all(2.0),
+                    child: Text(
+                      cell.letter,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: cell.placedBy == PlayerID.player1
+                            ? Colors.blue
+                            : Colors.red,
+                      ),
+                    ),
                   ),
-                ).animate().scale(duration: 200.ms).fadeIn(),
+                ),
         ),
       ),
     );
-  }
-
-  double _getFontSize(BuildContext context) {
-    int size = context.read<GameProvider>().gridSize;
-    if (size <= 3) return 40;
-    if (size <= 16) return 14;
-    return 8;
   }
 }

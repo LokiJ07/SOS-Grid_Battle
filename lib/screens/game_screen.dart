@@ -13,6 +13,7 @@ class GameScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<GameProvider>(
       builder: (context, game, child) {
+        // Auto-navigate to results
         if (game.isGameOver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             Navigator.pushReplacement(context,
@@ -25,14 +26,15 @@ class GameScreen extends StatelessWidget {
             child: Column(
               children: [
                 const ScoreBoard(),
+
+                // The Expanded widget ensures the board doesn't push elements off screen
                 Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: GameBoard(gridSize: game.gridSize),
-                    ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10.0),
+                    child: GameBoard(gridSize: game.gridSize),
                   ),
                 ),
+
                 const LetterSelector(),
               ],
             ),

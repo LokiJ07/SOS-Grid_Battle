@@ -1,12 +1,28 @@
 import 'player.dart';
 
+enum SpecialType { none, mine, perk }
+
+enum EffectType {
+  none,
+  stun,
+  halfLife,
+  minusScore,
+  drainOpponentLife,
+  drainOpponentScore
+}
+
 class CellModel {
   final int index;
   final int row;
   final int col;
-  String letter; // "S", "O", or ""
+  String letter;
   PlayerID? placedBy;
   bool isPartOfSOS;
+
+  // Battle Mode properties
+  SpecialType specialType;
+  EffectType effectType;
+  bool isRevealed;
 
   CellModel({
     required this.index,
@@ -15,6 +31,9 @@ class CellModel {
     this.letter = "",
     this.placedBy,
     this.isPartOfSOS = false,
+    this.specialType = SpecialType.none,
+    this.effectType = EffectType.none,
+    this.isRevealed = false,
   });
 
   bool get isEmpty => letter.isEmpty;

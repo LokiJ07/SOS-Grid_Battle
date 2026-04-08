@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
-import '../core/constants.dart';
 
 class LetterSelector extends StatelessWidget {
   const LetterSelector({super.key});
@@ -9,50 +8,41 @@ class LetterSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameProvider>();
+    // Use Media Query to adjust button size for smaller screens
+    double screenWidth = MediaQuery.of(context).size.width;
+    double btnSize = screenWidth > 600 ? 80 : 60;
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _buildLetterButton(context, "S", game.selectedLetter == "S"),
-          const SizedBox(width: 40),
-          _buildLetterButton(context, "O", game.selectedLetter == "O"),
+          _buildBtn(context, "S", game.selectedLetter == "S",
+              game.currentPlayer.color, btnSize),
+          const SizedBox(width: 20),
+          _buildBtn(context, "O", game.selectedLetter == "O",
+              game.currentPlayer.color, btnSize),
         ],
       ),
     );
   }
 
-  Widget _buildLetterButton(
-      BuildContext context, String letter, bool isSelected) {
+  Widget _buildBtn(
+      BuildContext context, String val, bool sel, Color color, double size) {
     return GestureDetector(
-      onTap: () => context.read<GameProvider>().selectLetter(letter),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 80,
-        height: 80,
+      onTap: () => context.read<GameProvider>().selectLetter(val),
+      child: Container(
+        width: size,
+        height: size,
         decoration: BoxDecoration(
-          color: isSelected
-              ? AppConstants.player1Color
-              : AppConstants.surfaceColor,
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                      color: AppConstants.player1Color.withOpacity(0.4),
-                      blurRadius: 10)
-                ]
-              : [],
+          color: sel ? color : Colors.white10,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: sel ? Colors.white : Colors.transparent),
         ),
         child: Center(
-          child: Text(
-            letter,
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: isSelected ? Colors.white : Colors.white54,
-            ),
-          ),
+          child: Text(val,
+              style:
+                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         ),
       ),
     );
