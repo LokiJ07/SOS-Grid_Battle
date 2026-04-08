@@ -45,12 +45,12 @@ class _SplashScreenState extends State<SplashScreen> {
 
             // Subtitle text
             const Text(
-              "GRID BATTLE",
+              "LoKiJ Presents",
               style: TextStyle(
                 color: Colors.white70,
                 fontSize: 18,
                 letterSpacing: 6,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w500,
               ),
             ).animate().fadeIn(delay: 1.seconds),
           ],

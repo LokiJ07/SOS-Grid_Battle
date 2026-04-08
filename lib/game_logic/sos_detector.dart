@@ -3,80 +3,54 @@ import '../models/sos_line.dart';
 import '../models/player.dart';
 
 class SOSDetector {
-  /// Checks for new SOS patterns only around the last placed cell.
-  /// Returns a list of SOSLine objects containing indices and the owner.
-  static List<SOSLine> checkNewSOS(List<CellModel> grid, int lastIndex,
-      int gridSize, PlayerID currentPlayerId) {
-    List<SOSLine> newLines = [];
+  static List<SOSLine> checkNewSOS(
+      List<CellModel> grid, int lastIndex, int size, PlayerID owner) {
+    List<SOSLine> lines = [];
     final cell = grid[lastIndex];
     final String letter = cell.letter;
-
-    // Directions: [rowDelta, colDelta]
     final directions = [
-      [0, 1], // Horizontal
-      [1, 0], // Vertical
-      [1, 1], // Diagonal Right (Down-Right)
-      [1, -1], // Diagonal Left (Down-Left)
+      [0, 1],
+      [1, 0],
+      [1, 1],
+      [1, -1]
     ];
 
     if (letter == "S") {
-      // If S is placed, it could be the START of an SOS or the END of an SOS
       for (var dir in directions) {
-        // Check forward (S is start)
-        newLines.addAll(_checkSAsEndpoint(grid, cell.row, cell.col, dir[0],
-            dir[1], gridSize, currentPlayerId));
-        // Check backward (S is end)
-        newLines.addAll(_checkSAsEndpoint(grid, cell.row, cell.col, -dir[0],
-            -dir[1], gridSize, currentPlayerId));
+        lines.addAll(
+            _check(grid, cell.row, cell.col, dir[0], dir[1], size, owner));
+        lines.addAll(
+            _check(grid, cell.row, cell.col, -dir[0], -dir[1], size, owner));
       }
     } else if (letter == "O") {
-      // If O is placed, it must be the CENTER of an SOS
       for (var dir in directions) {
-        newLines.addAll(_checkOAsCenter(grid, cell.row, cell.col, dir[0],
-            dir[1], gridSize, currentPlayerId));
+        int r1 = cell.row - dir[0], c1 = cell.col - dir[1];
+        int r2 = cell.row + dir[0], c2 = cell.col + dir[1];
+        if (_v(r1, c1, size) && _v(r2, c2, size)) {
+          if (grid[r1 * size + c1].letter == "S" &&
+              grid[r2 * size + c2].letter == "S") {
+            lines.add(SOSLine(
+                indices: [r1 * size + c1, lastIndex, r2 * size + c2],
+                owner: owner));
+          }
+        }
       }
     }
-
-    return newLines;
+    return lines;
   }
 
-  static List<SOSLine> _checkSAsEndpoint(List<CellModel> grid, int r, int c,
-      int dr, int dc, int size, PlayerID owner) {
-    int r1 = r + dr, c1 = c + dc;
-    int r2 = r + 2 * dr, c2 = c + 2 * dc;
-
-    if (_isValid(r1, c1, size) && _isValid(r2, c2, size)) {
-      if (grid[r1 * size + c1].letter == "O" &&
-          grid[r2 * size + c2].letter == "S") {
+  static List<SOSLine> _check(
+      List<CellModel> g, int r, int c, int dr, int dc, int s, PlayerID o) {
+    int r1 = r + dr, c1 = c + dc, r2 = r + 2 * dr, c2 = c + 2 * dc;
+    if (_v(r1, c1, s) && _v(r2, c2, s)) {
+      if (g[r1 * s + c1].letter == "O" && g[r2 * s + c2].letter == "S") {
         return [
-          SOSLine(
-              indices: [r * size + c, r1 * size + c1, r2 * size + c2],
-              owner: owner)
+          SOSLine(indices: [r * s + c, r1 * s + c1, r2 * s + c2], owner: o)
         ];
       }
     }
     return [];
   }
 
-  static List<SOSLine> _checkOAsCenter(List<CellModel> grid, int r, int c,
-      int dr, int dc, int size, PlayerID owner) {
-    int r1 = r - dr, c1 = c - dc;
-    int r2 = r + dr, c2 = c + dc;
-
-    if (_isValid(r1, c1, size) && _isValid(r2, c2, size)) {
-      if (grid[r1 * size + c1].letter == "S" &&
-          grid[r2 * size + c2].letter == "S") {
-        return [
-          SOSLine(
-              indices: [r1 * size + c1, r * size + c, r2 * size + c2],
-              owner: owner)
-        ];
-      }
-    }
-    return [];
-  }
-
-  static bool _isValid(int r, int c, int size) {
-    return r >= 0 && r < size && c >= 0 && c < size;
-  }
+  static bool _v(int r, int c, int s) => r >= 0 && r < s && c >= 0 && c < s;
 }

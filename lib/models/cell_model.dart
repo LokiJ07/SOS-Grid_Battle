@@ -18,8 +18,6 @@ class CellModel {
   String letter;
   PlayerID? placedBy;
   bool isPartOfSOS;
-
-  // Battle Mode properties
   SpecialType specialType;
   EffectType effectType;
   bool isRevealed;

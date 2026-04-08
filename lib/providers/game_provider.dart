@@ -5,9 +5,11 @@ import '../models/player.dart';
 import '../models/cell_model.dart';
 import '../models/sos_line.dart';
 import '../game_logic/sos_detector.dart';
+import '../game_logic/ai_engine.dart';
 import '../services/sound_service.dart';
 import '../services/vibration_service.dart';
 import '../services/storage_service.dart';
+import '../core/constants.dart';
 
 class GameProvider extends ChangeNotifier {
   late List<CellModel> grid;
@@ -19,35 +21,43 @@ class GameProvider extends ChangeNotifier {
   String selectedLetter = "S";
   bool isGameOver = false;
   List<SOSLine> sosLines = [];
+  int? lastMoveIndex; // Indicator for the pulsing glow
 
   Timer? _timer;
   int? timerLimit;
   int remainingSeconds = 0;
   String lastEffectMessage = "";
 
+  bool isVsAI = false;
+  AIDifficulty aiDifficulty = AIDifficulty.moderate;
+  bool isAiThinking = false;
+
   GameProvider() {
     player1 =
         Player(id: PlayerID.player1, name: "Player 1", color: Colors.blue);
-    player2 = Player(id: PlayerID.player2, name: "Player 2", color: Colors.red);
+    player2 = Player(id: PlayerID.player2, name: "Computer", color: Colors.red);
     currentPlayer = player1;
   }
 
-  void initGame(int size, int? limit) {
+  void initGame(int size, int? limit,
+      {bool vsAI = false, AIDifficulty diff = AIDifficulty.moderate}) {
     gridSize = size;
     timerLimit = limit;
+    isVsAI = vsAI;
+    aiDifficulty = diff;
+    isAiThinking = false;
     lastEffectMessage = "";
     isGameOver = false;
     sosLines = [];
     selectedLetter = "S";
+    lastMoveIndex = null;
 
     final random = Random();
     grid = List.generate(size * size, (index) {
       final cell =
           CellModel(index: index, row: index ~/ size, col: index % size);
-
       double chance = random.nextDouble();
       if (chance < 0.10) {
-        // 10% Mines
         cell.specialType = SpecialType.mine;
         cell.effectType = [
           EffectType.stun,
@@ -55,7 +65,6 @@ class GameProvider extends ChangeNotifier {
           EffectType.minusScore
         ][random.nextInt(3)];
       } else if (chance < 0.15) {
-        // 5% Perks
         cell.specialType = SpecialType.perk;
         cell.effectType = [
           EffectType.drainOpponentLife,
@@ -65,48 +74,80 @@ class GameProvider extends ChangeNotifier {
       return cell;
     });
 
-    player1.reset(10.0); // Lives as double for half-heart support
+    player1.reset(10.0);
     player2.reset(10.0);
-    currentPlayer = player1;
+    player2 = Player(
+        id: PlayerID.player2,
+        name: vsAI ? "Computer" : "Player 2",
+        color: Colors.red);
 
+    currentPlayer = player1;
     _startNewTurnTimer();
     notifyListeners();
   }
 
   void playMove(int index) {
-    if (isGameOver || !grid[index].isEmpty) return;
+    if (isGameOver || isAiThinking || !grid[index].isEmpty) return;
+    _executeMove(index);
 
+    if (!isGameOver && isVsAI && currentPlayer.id == PlayerID.player2) {
+      _triggerAITurn();
+    }
+  }
+
+  Future<void> _triggerAITurn() async {
+    isAiThinking = true;
+    notifyListeners();
+    // Realistic AI delay
+    await Future.delayed(Duration(milliseconds: 600 + Random().nextInt(800)));
+
+    final bestMove = AIEngine.computeBestMove(grid, gridSize, aiDifficulty);
+    if (bestMove.isNotEmpty) {
+      selectedLetter = bestMove["letter"];
+      _executeMove(bestMove["index"]);
+    }
+    isAiThinking = false;
+    notifyListeners();
+  }
+
+  void _executeMove(int index) {
+    lastMoveIndex = index;
     final cell = grid[index];
     cell.letter = selectedLetter;
     cell.placedBy = currentPlayer.id;
     cell.isRevealed = true;
 
-    // 1. Process Battle Effects
     _applyCellEffects(cell);
-
-    // 2. Check for SOS
     List<SOSLine> newSOS =
         SOSDetector.checkNewSOS(grid, index, gridSize, currentPlayer.id);
 
     if (newSOS.isNotEmpty) {
-      // Points with Streak Multiplier
-      int points = newSOS.length * currentPlayer.streak;
-      currentPlayer.score += points;
-      currentPlayer.streak++; // Level up streak
+      // NEW STREAK LOGIC:
+      // Multiplier starts only at Streak 4.
+      // Streak 4 = x2, Streak 5 = x3, etc.
+      int multiplier =
+          currentPlayer.streak >= 4 ? (currentPlayer.streak - 2) : 1;
 
-      sosLines.addAll(newSOS);
+      int pointsEarned = newSOS.length * multiplier;
+      currentPlayer.score += pointsEarned;
+      currentPlayer.streak++;
+
       for (var line in newSOS) {
+        sosLines.add(line);
         for (var idx in line.indices) grid[idx].isPartOfSOS = true;
       }
 
       SoundService.playSound('score.mp3');
       VibrationService.vibrate();
-      _startNewTurnTimer(); // Keep turn, reset timer
+      _startNewTurnTimer(); // Keep turn
+
+      if (isVsAI && currentPlayer.id == PlayerID.player2 && !isGameOver) {
+        _triggerAITurn();
+      }
     } else {
       currentPlayer.streak = 1; // Reset streak on miss
       _switchTurn();
     }
-
     _checkGameOver();
     notifyListeners();
   }
@@ -114,24 +155,21 @@ class GameProvider extends ChangeNotifier {
   void _applyCellEffects(CellModel cell) {
     lastEffectMessage = "";
     final opponent = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
-
     if (cell.specialType == SpecialType.mine) {
       VibrationService.vibrate();
       if (cell.effectType == EffectType.stun) {
         currentPlayer.isStunned = true;
-        lastEffectMessage = "STUNNED! TURN SKIP NEXT";
+        lastEffectMessage = "${currentPlayer.name.toUpperCase()} STUNNED!";
       } else if (cell.effectType == EffectType.halfLife) {
-        currentPlayer.lives =
-            max(0.0, currentPlayer.lives - 0.5); // Literal half-life
+        currentPlayer.lives = max(0.0, currentPlayer.lives - 0.5);
         lastEffectMessage = "MINE! -0.5 HP";
       } else if (cell.effectType == EffectType.minusScore) {
         currentPlayer.score = max(0, currentPlayer.score - 1);
         lastEffectMessage = "MINE! -1 SCORE";
       }
     } else if (cell.specialType == SpecialType.perk) {
-      SoundService.playSound('score.mp3');
       if (cell.effectType == EffectType.drainOpponentLife) {
-        opponent.lives = max(0.0, opponent.lives - 0.5); // Drain half-life
+        opponent.lives = max(0.0, opponent.lives - 0.5);
         lastEffectMessage = "PERK! OPPONENT -0.5 HP";
       } else if (cell.effectType == EffectType.drainOpponentScore) {
         opponent.score = max(0, opponent.score - 1);
@@ -143,10 +181,9 @@ class GameProvider extends ChangeNotifier {
   void _switchTurn() {
     _timer?.cancel();
     currentPlayer = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
-
     if (currentPlayer.isStunned) {
       currentPlayer.isStunned = false;
-      lastEffectMessage = "${currentPlayer.name} STUNNED: SKIPPED";
+      lastEffectMessage = "${currentPlayer.name.toUpperCase()} SKIPPED!";
       _switchTurn();
       return;
     }
@@ -181,11 +218,9 @@ class GameProvider extends ChangeNotifier {
   void _checkGameOver() {
     bool isGridFull = grid.every((cell) => !cell.isEmpty);
     bool playerDied = player1.lives <= 0 || player2.lives <= 0;
-
     if (isGridFull || playerDied) {
       isGameOver = true;
       _timer?.cancel();
-
       int winnerId = 0;
       if (player1.lives <= 0)
         winnerId = 2;
@@ -194,9 +229,7 @@ class GameProvider extends ChangeNotifier {
       else if (player1.score > player2.score)
         winnerId = 1;
       else if (player2.score > player1.score) winnerId = 2;
-
-      StorageService.recordWin(
-          winnerId, player1.score, (player2.score).toInt());
+      StorageService.recordWin(winnerId, player1.score, player2.score.toInt());
       SoundService.playSound('victory.mp3');
     }
   }

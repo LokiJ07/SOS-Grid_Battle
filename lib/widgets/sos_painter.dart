@@ -12,31 +12,27 @@ class SOSPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final double cellSize = size.width / gridSize;
-
     for (var line in lines) {
       final Paint paint = Paint()
         ..color = (line.owner == PlayerID.player1
                 ? AppConstants.player1Color
                 : AppConstants.player2Color)
             .withOpacity(0.8)
-        ..strokeWidth =
-            gridSize > 20 ? 1.5 : 3.0 // Thinner lines for larger grids
+        ..strokeWidth = gridSize > 20 ? 1.0 : 2.5
         ..strokeCap = StrokeCap.round;
 
-      // Get Start Cell Center
-      int startIdx = line.indices.first;
-      double startX = (startIdx % gridSize) * cellSize + (cellSize / 2);
-      double startY = (startIdx ~/ gridSize) * cellSize + (cellSize / 2);
+      int sIdx = line.indices.first;
+      double sx = (sIdx % gridSize) * cellSize + (cellSize / 2);
+      double sy = (sIdx ~/ gridSize) * cellSize + (cellSize / 2);
 
-      // Get End Cell Center
-      int endIdx = line.indices.last;
-      double endX = (endIdx % gridSize) * cellSize + (cellSize / 2);
-      double endY = (endIdx ~/ gridSize) * cellSize + (cellSize / 2);
+      int eIdx = line.indices.last;
+      double ex = (eIdx % gridSize) * cellSize + (cellSize / 2);
+      double ey = (eIdx ~/ gridSize) * cellSize + (cellSize / 2);
 
-      canvas.drawLine(Offset(startX, startY), Offset(endX, endY), paint);
+      canvas.drawLine(Offset(sx, sy), Offset(ex, ey), paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant SOSPainter oldDelegate) => true;
+  bool shouldRepaint(SOSPainter old) => true;
 }

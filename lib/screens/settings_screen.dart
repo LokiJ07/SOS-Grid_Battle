@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
+import '../core/constants.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -10,22 +11,36 @@ class SettingsScreen extends StatelessWidget {
     final settings = context.watch<SettingsProvider>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      backgroundColor: AppConstants.backgroundColor,
+      appBar: AppBar(title: const Text("SETTINGS")),
       body: ListView(
+        padding: const EdgeInsets.all(20),
         children: [
-          SwitchListTile(
-            title: const Text('Sound Effects'),
-            subtitle: const Text('Toggle game sounds'),
-            value: settings.soundEnabled,
-            onChanged: (val) => settings.toggleSound(val),
-          ),
-          SwitchListTile(
-            title: const Text('Vibration'),
-            subtitle: const Text('Haptic feedback on score'),
-            value: settings.vibrationEnabled,
-            onChanged: (val) => settings.toggleVibration(val),
-          ),
+          _settingItem("SOUND EFFECTS", "Toggle in-game sounds",
+              settings.soundEnabled, (v) => settings.toggleSound(v)),
+          _settingItem("VIBRATION", "Haptic feedback on score",
+              settings.vibrationEnabled, (v) => settings.toggleVibration(v)),
         ],
+      ),
+    );
+  }
+
+  Widget _settingItem(
+      String title, String subtitle, bool value, Function(bool) onChanged) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white.withOpacity(0.5), width: 0.5),
+      ),
+      child: SwitchListTile(
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(subtitle,
+            style: const TextStyle(fontSize: 12, color: Colors.white54)),
+        value: value,
+        onChanged: onChanged,
+        activeColor: Colors.blue,
       ),
     );
   }

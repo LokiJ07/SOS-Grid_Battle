@@ -7,7 +7,7 @@ class Player {
   final String name;
   final Color color;
   int score;
-  double lives; // Changed to double for half-heart support
+  double lives;
   int streak;
   bool isStunned;
 

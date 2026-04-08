@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import '../core/constants.dart';
-import 'timer_selection_screen.dart'; // Import the new screen
+import 'difficulty_selection_screen.dart'; // Needed for VS AI mode
+import 'timer_selection_screen.dart'; // Needed for Local PvP mode
 
 class BoardSizeScreen extends StatelessWidget {
-  const BoardSizeScreen({super.key});
+  // We add this variable to know if the user clicked "Solo" or "Multiplayer" in the Menu
+  final bool isVsAI;
+
+  const BoardSizeScreen({super.key, required this.isVsAI});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppConstants.backgroundColor,
       appBar: AppBar(
-        title: const Text('Select Board Size'),
+        title: const Text('SELECT BOARD SIZE'),
         centerTitle: true,
       ),
       body: ListView.builder(
@@ -19,10 +24,12 @@ class BoardSizeScreen extends StatelessWidget {
           int size = AppConstants.gridSizes[index];
           return Card(
             margin: const EdgeInsets.only(bottom: 16),
+            color: Colors.white.withOpacity(0.05),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(15),
+              side:
+                  BorderSide(color: Colors.white.withOpacity(0.5), width: 0.5),
             ),
-            elevation: 4,
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 20,
@@ -33,24 +40,40 @@ class BoardSizeScreen extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
               ),
               subtitle: Text(
                 '${size * size} total cells',
-                style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                style: TextStyle(color: Colors.white.withOpacity(0.5)),
               ),
               trailing: const Icon(
                 Icons.arrow_forward_ios,
                 color: Colors.blue,
+                size: 18,
               ),
               onTap: () {
-                // Navigate to Timer Selection instead of starting the game
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => TimerSelectionScreen(gridSize: size),
-                  ),
-                );
+                // BRANCHING LOGIC:
+                if (isVsAI) {
+                  // If playing against Computer, go to Difficulty Selection first
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DifficultySelectionScreen(gridSize: size),
+                    ),
+                  );
+                } else {
+                  // If playing Local Multiplayer, go straight to Timer Selection
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TimerSelectionScreen(
+                        gridSize: size,
+                        isVsAI: false,
+                      ),
+                    ),
+                  );
+                }
               },
             ),
           );

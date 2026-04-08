@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+enum AIDifficulty { easy, moderate, hard, expert }
+
 class AppConstants {
   static const String appName = 'SOS Grid Battle';
   static const Color player1Color = Colors.blue;

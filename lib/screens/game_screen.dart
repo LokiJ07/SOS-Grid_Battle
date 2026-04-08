@@ -11,36 +11,24 @@ class GameScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameProvider>(
-      builder: (context, game, child) {
-        // Auto-navigate to results
-        if (game.isGameOver) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            Navigator.pushReplacement(context,
-                MaterialPageRoute(builder: (_) => const ResultScreen()));
-          });
-        }
-
-        return Scaffold(
-          body: SafeArea(
-            child: Column(
-              children: [
-                const ScoreBoard(),
-
-                // The Expanded widget ensures the board doesn't push elements off screen
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(10.0),
-                    child: GameBoard(gridSize: game.gridSize),
-                  ),
-                ),
-
-                const LetterSelector(),
-              ],
-            ),
-          ),
-        );
-      },
+    final game = context.watch<GameProvider>();
+    if (game.isGameOver) {
+      Future.microtask(() => Navigator.pushReplacement(
+          context, MaterialPageRoute(builder: (_) => const ResultScreen())));
+    }
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            const ScoreBoard(),
+            Expanded(
+                child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: GameBoard(gridSize: game.gridSize))),
+            const LetterSelector(),
+          ],
+        ),
+      ),
     );
   }
 }
