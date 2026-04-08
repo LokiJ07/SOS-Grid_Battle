@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../core/constants.dart';
-import 'difficulty_selection_screen.dart'; // Needed for VS AI mode
-import 'timer_selection_screen.dart'; // Needed for Local PvP mode
+import 'mode_selection_screen.dart';
 
 class BoardSizeScreen extends StatelessWidget {
-  // We add this variable to know if the user clicked "Solo" or "Multiplayer" in the Menu
-  final bool isVsAI;
+  final bool isVsAI; // Tracks if the user chose Solo or Multiplayer in the menu
 
   const BoardSizeScreen({super.key, required this.isVsAI});
 
@@ -14,71 +13,122 @@ class BoardSizeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppConstants.backgroundColor,
       appBar: AppBar(
-        title: const Text('SELECT BOARD SIZE'),
+        title: const Text(
+          'SELECT BOARD SIZE',
+          style: TextStyle(
+              fontWeight: FontWeight.w500, letterSpacing: 2, fontSize: 18),
+        ),
         centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: AppConstants.gridSizes.length,
-        itemBuilder: (context, index) {
-          int size = AppConstants.gridSizes[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 16),
-            color: Colors.white.withOpacity(0.05),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
-              side:
-                  BorderSide(color: Colors.white.withOpacity(0.5), width: 0.5),
+      body: Column(
+        children: [
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              isVsAI ? "CHALLENGE THE COMPUTER" : "LOCAL MULTIPLAYER MATCH",
+              style: TextStyle(
+                color: isVsAI
+                    ? Colors.red.withOpacity(0.7)
+                    : Colors.blue.withOpacity(0.7),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
             ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 12,
-              ),
-              title: Text(
-                '$size x $size Grid',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              subtitle: Text(
-                '${size * size} total cells',
-                style: TextStyle(color: Colors.white.withOpacity(0.5)),
-              ),
-              trailing: const Icon(
-                Icons.arrow_forward_ios,
-                color: Colors.blue,
-                size: 18,
-              ),
-              onTap: () {
-                // BRANCHING LOGIC:
-                if (isVsAI) {
-                  // If playing against Computer, go to Difficulty Selection first
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => DifficultySelectionScreen(gridSize: size),
-                    ),
-                  );
-                } else {
-                  // If playing Local Multiplayer, go straight to Timer Selection
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => TimerSelectionScreen(
-                        gridSize: size,
-                        isVsAI: false,
-                      ),
-                    ),
-                  );
-                }
+          ).animate().fadeIn(),
+          const SizedBox(height: 20),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: AppConstants.gridSizes.length,
+              itemBuilder: (context, index) {
+                int size = AppConstants.gridSizes[index];
+                return _buildSizeCard(context, size, index);
               },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _buildSizeCard(BuildContext context, int size, int index) {
+    return GestureDetector(
+      onTap: () {
+        // Navigate to the next selection: Mode Selection (Classic vs Battle)
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ModeSelectionScreen(
+              gridSize: size,
+              isVsAI: isVsAI,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(15),
+          // Sharp professional 0.5 white border
+          border: Border.all(
+            color: Colors.white.withOpacity(0.5),
+            width: 0.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            // Icon representing the grid density
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                size > 16 ? Icons.grid_on : Icons.grid_view_rounded,
+                color: Colors.white70,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$size x $size',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    '${size * size} TOTAL CELLS',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.4),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white24,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(delay: (index * 100).ms).slideX(begin: 0.1);
   }
 }

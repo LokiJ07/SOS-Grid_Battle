@@ -21,7 +21,7 @@ class GameProvider extends ChangeNotifier {
   String selectedLetter = "S";
   bool isGameOver = false;
   List<SOSLine> sosLines = [];
-  int? lastMoveIndex; // Indicator for the pulsing glow
+  int? lastMoveIndex;
 
   Timer? _timer;
   int? timerLimit;
@@ -31,6 +31,7 @@ class GameProvider extends ChangeNotifier {
   bool isVsAI = false;
   AIDifficulty aiDifficulty = AIDifficulty.moderate;
   bool isAiThinking = false;
+  GameMode currentGameMode = GameMode.battle;
 
   GameProvider() {
     player1 =
@@ -40,11 +41,14 @@ class GameProvider extends ChangeNotifier {
   }
 
   void initGame(int size, int? limit,
-      {bool vsAI = false, AIDifficulty diff = AIDifficulty.moderate}) {
+      {bool vsAI = false,
+      AIDifficulty diff = AIDifficulty.moderate,
+      GameMode mode = GameMode.battle}) {
     gridSize = size;
     timerLimit = limit;
     isVsAI = vsAI;
     aiDifficulty = diff;
+    currentGameMode = mode;
     isAiThinking = false;
     lastEffectMessage = "";
     isGameOver = false;
@@ -56,20 +60,22 @@ class GameProvider extends ChangeNotifier {
     grid = List.generate(size * size, (index) {
       final cell =
           CellModel(index: index, row: index ~/ size, col: index % size);
-      double chance = random.nextDouble();
-      if (chance < 0.10) {
-        cell.specialType = SpecialType.mine;
-        cell.effectType = [
-          EffectType.stun,
-          EffectType.halfLife,
-          EffectType.minusScore
-        ][random.nextInt(3)];
-      } else if (chance < 0.15) {
-        cell.specialType = SpecialType.perk;
-        cell.effectType = [
-          EffectType.drainOpponentLife,
-          EffectType.drainOpponentScore
-        ][random.nextInt(2)];
+      if (mode == GameMode.battle) {
+        double chance = random.nextDouble();
+        if (chance < 0.10) {
+          cell.specialType = SpecialType.mine;
+          cell.effectType = [
+            EffectType.stun,
+            EffectType.halfLife,
+            EffectType.minusScore
+          ][random.nextInt(3)];
+        } else if (chance < 0.15) {
+          cell.specialType = SpecialType.perk;
+          cell.effectType = [
+            EffectType.drainOpponentLife,
+            EffectType.drainOpponentScore
+          ][random.nextInt(2)];
+        }
       }
       return cell;
     });
@@ -87,25 +93,40 @@ class GameProvider extends ChangeNotifier {
   }
 
   void playMove(int index) {
+    // Prevent moves if game is over, AI is thinking, or cell is full
     if (isGameOver || isAiThinking || !grid[index].isEmpty) return;
+
     _executeMove(index);
 
+    // After human move, if it's now the AI's turn, trigger it
     if (!isGameOver && isVsAI && currentPlayer.id == PlayerID.player2) {
       _triggerAITurn();
     }
   }
 
   Future<void> _triggerAITurn() async {
+    // 1. Check if AI is stunned BEFORE thinking
+    if (currentPlayer.isStunned) {
+      await Future.delayed(const Duration(milliseconds: 1000));
+      currentPlayer.isStunned = false;
+      lastEffectMessage = "COMPUTER IS STUNNED! SKIP TURN";
+      _switchTurn();
+      notifyListeners();
+      return;
+    }
+
     isAiThinking = true;
     notifyListeners();
-    // Realistic AI delay
-    await Future.delayed(Duration(milliseconds: 600 + Random().nextInt(800)));
+
+    // AI thinking delay
+    await Future.delayed(Duration(milliseconds: 800 + Random().nextInt(500)));
 
     final bestMove = AIEngine.computeBestMove(grid, gridSize, aiDifficulty);
     if (bestMove.isNotEmpty) {
       selectedLetter = bestMove["letter"];
       _executeMove(bestMove["index"]);
     }
+
     isAiThinking = false;
     notifyListeners();
   }
@@ -118,17 +139,16 @@ class GameProvider extends ChangeNotifier {
     cell.isRevealed = true;
 
     _applyCellEffects(cell);
+
     List<SOSLine> newSOS =
         SOSDetector.checkNewSOS(grid, index, gridSize, currentPlayer.id);
 
     if (newSOS.isNotEmpty) {
-      // NEW STREAK LOGIC:
-      // Multiplier starts only at Streak 4.
-      // Streak 4 = x2, Streak 5 = x3, etc.
+      // SCORING: Streak 4 = x2, Streak 5 = x3
       int multiplier =
           currentPlayer.streak >= 4 ? (currentPlayer.streak - 2) : 1;
-
       int pointsEarned = newSOS.length * multiplier;
+
       currentPlayer.score += pointsEarned;
       currentPlayer.streak++;
 
@@ -139,13 +159,16 @@ class GameProvider extends ChangeNotifier {
 
       SoundService.playSound('score.mp3');
       VibrationService.vibrate();
-      _startNewTurnTimer(); // Keep turn
 
-      if (isVsAI && currentPlayer.id == PlayerID.player2 && !isGameOver) {
+      // Bonus turn logic: Reset timer but don't switch players
+      _startNewTurnTimer();
+
+      // If AI scored, it triggers another move
+      if (!isGameOver && isVsAI && currentPlayer.id == PlayerID.player2) {
         _triggerAITurn();
       }
     } else {
-      currentPlayer.streak = 1; // Reset streak on miss
+      currentPlayer.streak = 1;
       _switchTurn();
     }
     _checkGameOver();
@@ -155,17 +178,20 @@ class GameProvider extends ChangeNotifier {
   void _applyCellEffects(CellModel cell) {
     lastEffectMessage = "";
     final opponent = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
+
     if (cell.specialType == SpecialType.mine) {
       VibrationService.vibrate();
       if (cell.effectType == EffectType.stun) {
         currentPlayer.isStunned = true;
-        lastEffectMessage = "${currentPlayer.name.toUpperCase()} STUNNED!";
+        lastEffectMessage =
+            "${currentPlayer.name.toUpperCase()} HIT A STUN MINE!";
       } else if (cell.effectType == EffectType.halfLife) {
         currentPlayer.lives = max(0.0, currentPlayer.lives - 0.5);
-        lastEffectMessage = "MINE! -0.5 HP";
+        lastEffectMessage = "MINE! ${currentPlayer.name.toUpperCase()} -0.5 HP";
       } else if (cell.effectType == EffectType.minusScore) {
         currentPlayer.score = max(0, currentPlayer.score - 1);
-        lastEffectMessage = "MINE! -1 SCORE";
+        lastEffectMessage =
+            "MINE! ${currentPlayer.name.toUpperCase()} -1 SCORE";
       }
     } else if (cell.specialType == SpecialType.perk) {
       if (cell.effectType == EffectType.drainOpponentLife) {
@@ -181,12 +207,16 @@ class GameProvider extends ChangeNotifier {
   void _switchTurn() {
     _timer?.cancel();
     currentPlayer = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
-    if (currentPlayer.isStunned) {
+
+    // If it's the Human's turn and they are stunned, skip them
+    if (currentPlayer.id == PlayerID.player1 && currentPlayer.isStunned) {
       currentPlayer.isStunned = false;
-      lastEffectMessage = "${currentPlayer.name.toUpperCase()} SKIPPED!";
+      lastEffectMessage = "YOU ARE STUNNED! SKIP TURN";
       _switchTurn();
       return;
     }
+
+    // For AI, the skip is handled inside _triggerAITurn to prevent logic loops
     _startNewTurnTimer();
   }
 
@@ -207,17 +237,24 @@ class GameProvider extends ChangeNotifier {
   void _handleTimeout() {
     currentPlayer.lives = max(0.0, currentPlayer.lives - 1.0);
     currentPlayer.streak = 1;
-    lastEffectMessage = "TIMEOUT! -1 HP";
-    if (currentPlayer.lives <= 0)
+    lastEffectMessage = "${currentPlayer.name.toUpperCase()} TIMEOUT! -1 HP";
+
+    if (currentPlayer.lives <= 0) {
       _checkGameOver();
-    else
+    } else {
       _switchTurn();
+      // If computer was waiting for turn and human timed out, trigger AI
+      if (!isGameOver && isVsAI && currentPlayer.id == PlayerID.player2) {
+        _triggerAITurn();
+      }
+    }
     notifyListeners();
   }
 
   void _checkGameOver() {
     bool isGridFull = grid.every((cell) => !cell.isEmpty);
     bool playerDied = player1.lives <= 0 || player2.lives <= 0;
+
     if (isGridFull || playerDied) {
       isGameOver = true;
       _timer?.cancel();
