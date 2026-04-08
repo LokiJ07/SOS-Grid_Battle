@@ -1,0 +1,29 @@
+name: sos_grid_battle
+description: A classic SOS strategy game for mobile.
+version: 1.0.0+1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.1.1
+  shared_preferences: ^2.2.2
+  audioplayers: ^5.2.1
+  google_fonts: ^6.1.0
+  flutter_animate: ^4.5.0
+  # vibration dependency removed to fix build error
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/sounds/placement.mp3
+    - assets/sounds/score.mp3
+    - assets/sounds/victory.mp3
