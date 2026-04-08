@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 
 enum AIDifficulty { easy, moderate, hard, expert }
 
+enum GameMode { classic, battle } // NEW: Plain vs Battle
+
 class AppConstants {
   static const String appName = 'SOS Grid Battle';
   static const Color player1Color = Colors.blue;
   static const Color player2Color = Colors.red;
   static const Color backgroundColor = Color(0xFF0F0F0F);
-  static const Color surfaceColor = Color(0xFF1E1E1E);
+  static const Color surfaceColor = Color(0xFF1A1A1A);
 
-  // Expanded to 6 board sizes as requested
   static const List<int> gridSizes = [3, 6, 10, 16, 24, 32];
 
   // Storage Keys
