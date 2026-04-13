@@ -167,6 +167,7 @@ class ResultScreen extends StatelessWidget {
                         MaterialPageRoute(
                           builder: (_) => MatchHistoryScreen(
                             history: game.matchHistory, // Pass move list
+                            sosLines: game.sosLines, // PASS THIS
                             gridSize: game.gridSize, // Pass board size
                           ),
                         ),

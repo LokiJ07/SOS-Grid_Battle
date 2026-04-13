@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants.dart';
 import '../models/move_model.dart';
+import '../models/sos_line.dart';
 
 class StorageService {
   static late SharedPreferences _prefs;
@@ -24,28 +25,23 @@ class StorageService {
 
   static Future<void> saveMatchToArchive(
       {required List<MoveModel> history,
+      required List<SOSLine> sosLines, // NEW PARAMETER
       required int gridSize,
       required String result}) async {
-    // 1. Load existing archive
     List<dynamic> archive = [];
     String? existingData = _prefs.getString(keyMatchArchive);
-    if (existingData != null) {
-      archive = jsonDecode(existingData);
-    }
+    if (existingData != null) archive = jsonDecode(existingData);
 
-    // 2. Add new match to the top
     Map<String, dynamic> newMatch = {
       'date': DateTime.now().toIso8601String(),
       'gridSize': gridSize,
       'result': result,
       'moves': history.map((m) => m.toJson()).toList(),
+      'sosLines': sosLines.map((s) => s.toJson()).toList(), // NEW: Save lines
     };
+
     archive.insert(0, newMatch);
-
-    // 3. Limit to last 10 games to save space
-    if (archive.length > 10) archive.removeLast();
-
-    // 4. Save back to local storage
+    if (archive.length > 15) archive.removeLast(); // Keep last 15
     await _prefs.setString(keyMatchArchive, jsonEncode(archive));
   }
 
