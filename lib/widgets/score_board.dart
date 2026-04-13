@@ -10,16 +10,13 @@ class ScoreBoard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameProvider>();
-    final screenHeight = MediaQuery.of(context).size.height;
+    final h = MediaQuery.of(context).size.height;
 
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        // AI Thinking Status
+        // 1. Top Status Bars
         if (game.isAiThinking)
           _statusBar("COMPUTER IS THINKING...", Colors.red),
-
-        // Timer Status Bar
         if (game.timerLimit != null)
           _statusBar(
               "TIME: ${game.remainingSeconds}s",
@@ -27,31 +24,26 @@ class ScoreBoard extends StatelessWidget {
                   ? Colors.red.shade900
                   : Colors.blueGrey.shade900),
 
-        // Battle Mode Effect Banner
-        if (game.lastEffectMessage.isNotEmpty)
-          _statusBar(game.lastEffectMessage, Colors.orange,
-              textColor: Colors.black),
-
-        // Main Player Cards Row
+        // 2. Score Cards
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                  child: _buildPlayerCard(game.player1,
-                      game.currentPlayer.id == PlayerID.player1, screenHeight)),
+                  child: _playerCard(game.player1,
+                      game.currentPlayer.id == PlayerID.player1, h)),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4, vertical: 15),
                 child: Text("VS",
                     style: TextStyle(
                         color: Colors.white24,
                         fontSize: 10,
-                        fontWeight: FontWeight.bold)),
+                        fontWeight: FontWeight.w900)),
               ),
               Expanded(
-                  child: _buildPlayerCard(game.player2,
-                      game.currentPlayer.id == PlayerID.player2, screenHeight)),
+                  child: _playerCard(game.player2,
+                      game.currentPlayer.id == PlayerID.player2, h)),
             ],
           ),
         ),
@@ -59,113 +51,107 @@ class ScoreBoard extends StatelessWidget {
     );
   }
 
-  Widget _statusBar(String text, Color bg, {Color textColor = Colors.white}) {
-    return Container(
+  Widget _statusBar(String t, Color c) => Container(
       width: double.infinity,
-      color: bg,
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Text(text,
+      color: c,
+      padding: const EdgeInsets.all(2),
+      child: Text(t,
           textAlign: TextAlign.center,
-          style: TextStyle(
-              color: textColor, fontWeight: FontWeight.bold, fontSize: 10)),
-    );
-  }
+          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900)));
 
-  Widget _buildPlayerCard(Player player, bool isActive, double screenHeight) {
-    // Adaptive Sizing: Shrink tallies if score is high
-    double tallyWidth = player.score > 40 ? 12.0 : 18.0;
-    double tallyHeight = player.score > 40 ? 16.0 : 22.0;
-
+  Widget _playerCard(Player p, bool active, double screenHeight) {
     return Container(
-      // Responsive constraint: Scoreboard never takes more than 15% of screen height
-      constraints: BoxConstraints(maxHeight: screenHeight * 0.15),
+      constraints: BoxConstraints(maxHeight: screenHeight * 0.16),
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: isActive ? player.color.withOpacity(0.1) : Colors.black26,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isActive ? player.color : Colors.white.withOpacity(0.2),
-          width: 0.5, // Standardized 0.5 white border
-        ),
-      ),
+          color: active ? p.color.withOpacity(0.1) : Colors.black26,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: active ? p.color : Colors.white.withOpacity(0.2),
+              width: 0.5)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Player Header
+          // Header: Name and Numerical Score
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Flexible(
-                  child: Text(player.name.toUpperCase(),
+                  child: Text(p.name.toUpperCase(),
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          color: player.color,
-                          fontWeight: FontWeight.bold,
+                          color: p.color,
+                          fontWeight: FontWeight.w900,
                           fontSize: 10))),
-              Text("${player.score}",
-                  style: const TextStyle(
+              // If score is negative, make it Red
+              Text("${p.score}",
+                  style: TextStyle(
                       fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white54)),
+                      fontWeight: FontWeight.w900,
+                      color: p.score < 0 ? Colors.redAccent : Colors.white54)),
             ],
           ),
           const Divider(color: Colors.white10, height: 8),
 
-          // SCROLLABLE TALLY AREA
+          // SCORING AREA (Tally marks OR "LOSS" Text for negative)
           Expanded(
-            child: Scrollbar(
-              radius: const Radius.circular(10),
-              child: SingleChildScrollView(
-                child: Wrap(
-                  spacing: 3,
-                  runSpacing: 3,
-                  children: _generateTallies(
-                      player.score, player.color, tallyWidth, tallyHeight),
-                ),
-              ),
-            ),
+            child: p.score < 0
+                ? Center(
+                    child: Text("LOSS: ${p.score}",
+                        style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14)))
+                : Scrollbar(
+                    child: SingleChildScrollView(
+                      child: Wrap(
+                          spacing: 3,
+                          runSpacing: 3,
+                          children: _generateTallies(p.score, p.color)),
+                    ),
+                  ),
           ),
 
           const SizedBox(height: 4),
 
-          // Footer info (HP and Streak Multipliers)
+          // HP and Perk Info
           FittedBox(
             child: Row(
               children: [
-                const Icon(Icons.favorite, color: Colors.red, size: 10),
+                const Icon(Icons.favorite, color: Colors.red, size: 9),
                 const SizedBox(width: 3),
-                Text(
-                    'HP: ${player.lives.toStringAsFixed(player.lives % 1 == 0 ? 0 : 1)}',
+                Text('HP: ${p.lives.toStringAsFixed(p.lives % 1 == 0 ? 0 : 1)}',
                     style: const TextStyle(
                         fontSize: 9, fontWeight: FontWeight.bold)),
-
-                // COMBO INDICATOR (Starts at Streak 4)
-                if (player.streak >= 4) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.orange,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      'x${player.streak - 2} COMBO',
-                      style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ] else if (player.streak > 1) ...[
-                  const SizedBox(width: 6),
-                  Text('Streak: ${player.streak} 🔥',
+                if (p.hasShield)
+                  const Padding(
+                      padding: EdgeInsets.only(left: 5),
+                      child: Icon(Icons.shield,
+                          color: Colors.blueAccent, size: 9)),
+                if (p.streak >= 4)
+                  Text(' x${p.streak - 2} COMBO',
                       style: const TextStyle(
                           color: Colors.orange,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold)),
-                ]
+                          fontSize: 8,
+                          fontWeight: FontWeight.w900)),
               ],
+            ),
+          ),
+
+          // VISUAL HEALTH BAR (Turns Cyan for over-heal > 10)
+          const SizedBox(height: 2),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: (p.lives / 10)
+                  .clamp(0.0, 2.0), // Allows bar to show up to double normal HP
+              backgroundColor: Colors.white10,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                p.lives > 10
+                    ? Colors.cyanAccent
+                    : (p.lives > 3 ? p.color : Colors.red),
+              ),
+              minHeight: 2,
             ),
           ),
         ],
@@ -173,17 +159,14 @@ class ScoreBoard extends StatelessWidget {
     );
   }
 
-  List<Widget> _generateTallies(int score, Color color, double w, double h) {
-    if (score == 0)
-      return [
-        const Text("-", style: TextStyle(color: Colors.white24, fontSize: 10))
-      ];
+  List<Widget> _generateTallies(int score, Color color) {
+    if (score <= 0) return [const SizedBox.shrink()];
 
     return List.generate((score / 5).ceil(), (index) {
       int count = (index < score ~/ 5) ? 5 : (score % 5);
       if (count == 0) return const SizedBox.shrink();
       return CustomPaint(
-        size: Size(w, h),
+        size: const Size(14, 18),
         painter: TallyPainter(count: count, color: color),
       );
     });

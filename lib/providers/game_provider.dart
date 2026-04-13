@@ -20,19 +20,21 @@ class GameProvider extends ChangeNotifier {
 
   String selectedLetter = "S";
   bool isGameOver = false;
+  bool isAnimating = false; // Blocks input during Mines/Perks animations
   List<SOSLine> sosLines = [];
   int? lastMoveIndex;
 
   Timer? _timer;
-  Timer? _notifTimer; // Timer for clearing notifications
   int? timerLimit;
   int remainingSeconds = 0;
+
   String lastEffectMessage = "";
+  IconData? lastEffectIcon;
 
   bool isVsAI = false;
   AIDifficulty aiDifficulty = AIDifficulty.moderate;
-  bool isAiThinking = false;
-  GameMode currentGameMode = GameMode.battle;
+  bool isAiThinking = false; // Blocks input during Computer Turn
+  bool _isProcessing = false; // Logic lock for move sequences
 
   GameProvider() {
     player1 =
@@ -41,7 +43,7 @@ class GameProvider extends ChangeNotifier {
     currentPlayer = player1;
   }
 
-  /// Initializes the game state
+  /// Initializes a new match
   void initGame(int size, int? limit,
       {bool vsAI = false,
       AIDifficulty diff = AIDifficulty.moderate,
@@ -50,25 +52,24 @@ class GameProvider extends ChangeNotifier {
     timerLimit = limit;
     isVsAI = vsAI;
     aiDifficulty = diff;
-    currentGameMode = mode;
     isGameOver = false;
+    isAnimating = false;
+    isAiThinking = false;
+    _isProcessing = false;
     sosLines = [];
     selectedLetter = "S";
     lastMoveIndex = null;
-    lastEffectMessage = "BATTLE START!";
+    lastEffectMessage = "";
 
-    // 1. Generate empty grid
     grid = List.generate(
         size * size,
         (index) =>
             CellModel(index: index, row: index ~/ size, col: index % size));
 
-    // 2. Populate Battle Mode Items (Mines/Perks)
     if (mode == GameMode.battle) {
       _generateBattleItems(size);
     }
 
-    // 3. Setup Players
     player1.reset(10.0);
     player2 = Player(
         id: PlayerID.player2,
@@ -77,80 +78,90 @@ class GameProvider extends ChangeNotifier {
     player2.reset(10.0);
 
     currentPlayer = player1;
-
     _startNewTurnTimer();
-    _showNotification("GAME START!", 2);
     notifyListeners();
   }
 
+  /// Populates the grid with a 15% density of random items
   void _generateBattleItems(int size) {
     final random = Random();
     int totalCells = size * size;
-    // 15% density for battle items
-    int itemCount = (totalCells * 0.15).clamp(2, 200).toInt();
-    List<int> availableIndices = List.generate(totalCells, (i) => i)..shuffle();
+    int count = (totalCells * 0.15).clamp(2, 200).toInt();
+    List<int> available = List.generate(totalCells, (i) => i)..shuffle();
 
-    List<EffectType> mines = [
-      EffectType.stun,
-      EffectType.halfLife,
-      EffectType.minusScore,
-      EffectType.theGreatSwap,
-      EffectType.streakReset,
-      EffectType.poison,
-      EffectType.vampireTrap,
-      EffectType.bombRadius,
-      EffectType.timePressure,
-      EffectType.scoreWipe
-    ];
-    List<EffectType> perks = [
-      EffectType.drainOpponentLife,
-      EffectType.drainOpponentScore,
-      EffectType.lifeSteal,
-      EffectType.extraHeart,
-      EffectType.comboBooster,
-      EffectType.jackpot,
-      EffectType.shield,
-      EffectType.revealRadius,
-      EffectType.doublePoints,
-      EffectType.timerBonus
-    ];
-
-    for (int i = 0; i < itemCount; i++) {
-      int idx = availableIndices[i];
+    for (int i = 0; i < count; i++) {
+      int idx = available[i];
       bool isMine = random.nextBool();
       grid[idx].specialType = isMine ? SpecialType.mine : SpecialType.perk;
-      grid[idx].effectType = isMine
-          ? mines[random.nextInt(mines.length)]
-          : perks[random.nextInt(perks.length)];
+      // Pulls randomly from the full pool of 20 EffectTypes
+      grid[idx].effectType =
+          EffectType.values[random.nextInt(EffectType.values.length)];
     }
   }
 
-  /// Triggered when a player taps a cell
+  /// Public entry point for a player tap
   void playMove(int index) {
-    if (isGameOver || isAiThinking || !grid[index].isEmpty) return;
-    _executeMove(index);
+    // BLOCK: If game ended, if animating, if logic is busy, or cell is not empty
+    if (isGameOver ||
+        isAiThinking ||
+        isAnimating ||
+        _isProcessing ||
+        !grid[index].isEmpty) return;
 
-    if (!isGameOver && isVsAI && currentPlayer.id == PlayerID.player2) {
-      _triggerAITurn();
-    }
+    // BLOCK: If it is the Computer's turn
+    if (isVsAI && currentPlayer.id == PlayerID.player2) return;
+
+    _handleMoveSequence(index);
   }
 
-  void _executeMove(int index) {
+  /// Orchestrates the sequence of a move (Resolution -> Sound -> AI Trigger)
+  Future<void> _handleMoveSequence(int index) async {
+    _isProcessing = true;
+
+    // Execute move logic and check for SOS
+    bool scored = await _executeMoveLogic(index);
+
+    // Check if turn should pass to AI
+    if (!isGameOver && isVsAI && currentPlayer.id == PlayerID.player2) {
+      _isProcessing = false;
+      _triggerAITurn();
+    } else {
+      _isProcessing = false;
+    }
+    notifyListeners();
+  }
+
+  /// The internal logic for placing a letter and checking SOS
+  Future<bool> _executeMoveLogic(int index) async {
     lastMoveIndex = index;
     final cell = grid[index];
     cell.letter = selectedLetter;
     cell.placedBy = currentPlayer.id;
     cell.isRevealed = true;
 
-    _applyCellEffects(cell);
+    _timer?.cancel(); // Pause turn timer
 
+    // 1. Resolve Mines/Perks
+    if (cell.specialType != SpecialType.none) {
+      await _applyCellEffects(cell);
+    }
+
+    if (isGameOver) return false;
+
+    // 2. SOS Detection
     List<SOSLine> newSOS =
         SOSDetector.checkNewSOS(grid, index, gridSize, currentPlayer.id);
 
     if (newSOS.isNotEmpty) {
-      // Streak Multiplier: Streak 4 = x2, 5 = x3, etc.
+      // SCORING: Streak 4 = x2, 5 = x3, etc.
       int mult = currentPlayer.streak >= 4 ? (currentPlayer.streak - 2) : 1;
-      currentPlayer.score += newSOS.length * mult;
+      currentPlayer.score += (newSOS.length * mult);
+
+      // Dynamic Audio Speed based on Combo Streak
+      double soundSpeed = (1.0 + (currentPlayer.streak * 0.15)).clamp(1.0, 2.5);
+      SoundService.playSound('score.mp3', speed: soundSpeed);
+      VibrationService.vibrate();
+
       currentPlayer.streak++;
 
       for (var line in newSOS) {
@@ -158,147 +169,211 @@ class GameProvider extends ChangeNotifier {
         for (var idx in line.indices) grid[idx].isPartOfSOS = true;
       }
 
-      SoundService.playSound('score.mp3');
-      VibrationService.vibrate();
-      _startNewTurnTimer(); // Bonus Turn: Reset timer but don't switch players
-
-      // If AI scored, it continues its turn
-      if (!isGameOver && isVsAI && currentPlayer.id == PlayerID.player2) {
-        _triggerAITurn();
-      }
+      _startNewTurnTimer(); // Bonus Turn
+      notifyListeners();
+      return true;
     } else {
-      currentPlayer.streak = 1;
+      // Standard non-scoring move
+      SoundService.playSound('placement.mp3');
+      currentPlayer.streak = 1; // Reset streak
       _switchTurn();
+      notifyListeners();
+      return false;
     }
-
-    _checkGameOver();
-    notifyListeners();
   }
 
-  void _applyCellEffects(CellModel cell) {
-    if (cell.specialType == SpecialType.none) return;
+  /// Logic for all 20 Battle Items (Mines and Perks)
+  Future<void> _applyCellEffects(CellModel cell) async {
+    isAnimating = true;
+    final opponent = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
 
-    // SHIELD LOGIC: Blocks mines
+    // Shield Logic: Blocks the next mine hit
     if (cell.specialType == SpecialType.mine && currentPlayer.hasShield) {
       currentPlayer.hasShield = false;
-      _showNotification("SHIELD BLOCKED MINE!", 3);
+      await _showBattleAnimation("SHIELD BLOCKED!", Icons.security);
+      isAnimating = false;
       return;
     }
 
-    final opponent = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
-    VibrationService.vibrate();
+    String msg = "";
+    IconData icon = Icons.bolt;
 
     switch (cell.effectType) {
+      // MINES (Traps)
       case EffectType.theGreatSwap:
         int stolen = (currentPlayer.score / 2).floor();
         currentPlayer.score -= stolen;
         opponent.score += stolen;
-        _showNotification("SCORE SWAP TRIGGERED!", 3);
+        msg = "THE GREAT SWAP!";
+        icon = Icons.swap_horizontal_circle;
         break;
       case EffectType.stun:
         currentPlayer.isStunned = true;
-        _showNotification("${currentPlayer.name} STUNNED!", 3);
+        msg = "STUNNED! SKIP TURN";
+        icon = Icons.timer_off;
         break;
       case EffectType.halfLife:
-        currentPlayer.lives = max(0.0, currentPlayer.lives - 0.5);
-        _showNotification("MINE: -0.5 HP", 2);
+        currentPlayer.lives -= 0.5; // ALLOWS NEGATIVE
+        msg = "HALF-LIFE! -0.5 HP";
+        icon = Icons.heart_broken;
         break;
+      case EffectType.minusScore:
+        currentPlayer.score -= 2; // ALLOWS NEGATIVE
+        msg = "-2 SCORE LOSS";
+        icon = Icons.trending_down;
+        break;
+      case EffectType.streakReset:
+        currentPlayer.streak = 1;
+        msg = "STREAK RESET!";
+        icon = Icons.layers_clear;
+        break;
+      case EffectType.poison:
+        currentPlayer.lives -= 1.5; // ALLOWS NEGATIVE
+        msg = "POISONED! -1.5 HP";
+        icon = Icons.biotech;
+        break;
+      case EffectType.vampireTrap:
+        currentPlayer.lives -= 1.0;
+        opponent.lives += 1.0; // OVER-HEAL
+        msg = "VAMPIRE TRAP!";
+        icon = Icons.bloodtype;
+        break;
+      case EffectType.scoreWipe:
+        currentPlayer.score -= 5; // ALLOWS NEGATIVE
+        msg = "SCORE WIPE! -5";
+        icon = Icons.delete_forever;
+        break;
+      case EffectType.timePressure:
+        remainingSeconds = (remainingSeconds / 2).floor();
+        msg = "TIME PRESSURE!";
+        icon = Icons.speed;
+        break;
+
+      // PERKS (Buffs)
       case EffectType.jackpot:
         currentPlayer.score += 5;
-        _showNotification("JACKPOT: +5 SCORE!", 2);
+        msg = "JACKPOT! +5 SCORE";
+        icon = Icons.stars;
         break;
       case EffectType.extraHeart:
-        currentPlayer.lives = min(10.0, currentPlayer.lives + 2.0);
-        _showNotification("RECOVERED +2 HP", 2);
+        currentPlayer.lives += 2.0; // OVER-HEAL
+        msg = "EXTRA HEART! +2 HP";
+        icon = Icons.add_box;
+        break;
+      case EffectType.lifeSteal:
+        currentPlayer.lives += 1.0; // OVER-HEAL
+        opponent.lives -= 1.0;
+        msg = "LIFE STEAL!";
+        icon = Icons.health_and_safety;
         break;
       case EffectType.shield:
         currentPlayer.hasShield = true;
-        _showNotification("SHIELD ACTIVATED!", 2);
+        msg = "SHIELD EQUIPPED";
+        icon = Icons.shield;
         break;
       case EffectType.revealRadius:
-        _showNotification("AREA REVEALED!", 2);
-        for (int dr = -1; dr <= 1; dr++) {
-          for (int dc = -1; dc <= 1; dc++) {
-            int nr = cell.row + dr, nc = cell.col + dc;
-            if (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
-              grid[nr * gridSize + nc].isRevealed = true;
-            }
-          }
-        }
+        _revealNearby(cell.row, cell.col);
+        msg = "AREA REVEALED";
+        icon = Icons.visibility;
         break;
-      case EffectType.poison:
-        currentPlayer.lives = max(0.0, currentPlayer.lives - 1.5);
-        _showNotification("POISONED: -1.5 HP", 2);
+      case EffectType.comboBooster:
+        currentPlayer.streak += 3;
+        msg = "STREAK BOOSTER +3";
+        icon = Icons.rocket_launch;
         break;
-      case EffectType.lifeSteal:
-        currentPlayer.lives = min(10.0, currentPlayer.lives + 1.0);
-        opponent.lives = max(0.0, opponent.lives - 1.0);
-        _showNotification("LIFE STEAL!", 2);
+      case EffectType.drainOpponentScore:
+        opponent.score -= 2;
+        msg = "ENEMY -2 SCORE";
+        icon = Icons.money_off;
+        break;
+      case EffectType.timerBonus:
+        remainingSeconds += 10;
+        msg = "TIMER BONUS +10S";
+        icon = Icons.more_time;
         break;
       default:
-        _showNotification("ITEM TRIGGERED!", 2);
+        msg = "BATTLE ITEM!";
+        icon = Icons.bolt;
+    }
+
+    VibrationService.vibrate();
+    await _showBattleAnimation(msg, icon);
+    isAnimating = false;
+  }
+
+  void _revealNearby(int row, int col) {
+    for (int dr = -1; dr <= 1; dr++) {
+      for (int dc = -1; dc <= 1; dc++) {
+        int nr = row + dr, nc = col + dc;
+        if (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
+          grid[nr * gridSize + nc].isRevealed = true;
+        }
+      }
     }
   }
 
-  void _showNotification(String msg, int seconds) {
-    _notifTimer?.cancel();
+  Future<void> _showBattleAnimation(String msg, IconData icon) async {
     lastEffectMessage = msg;
+    lastEffectIcon = icon;
     notifyListeners();
-    _notifTimer = Timer(Duration(seconds: seconds), () {
-      lastEffectMessage = "";
-      notifyListeners();
-    });
+    await Future.delayed(const Duration(milliseconds: 2000));
+    lastEffectMessage = "";
+    lastEffectIcon = null;
+    notifyListeners();
   }
 
+  /// Logic loop for AI turns including bonus moves
   Future<void> _triggerAITurn() async {
-    if (isGameOver) return;
-
-    // Check for AI Stun
-    if (currentPlayer.isStunned) {
-      isAiThinking = true; // Visual feedback
-      notifyListeners();
-      await Future.delayed(const Duration(milliseconds: 1500));
-      currentPlayer.isStunned = false;
-      _showNotification("COMPUTER STUNNED: SKIPPING", 2);
-      isAiThinking = false;
-      _switchTurn();
-      return;
-    }
-
+    if (isGameOver || isAiThinking) return;
     isAiThinking = true;
     notifyListeners();
 
-    // AI "Thinking" delay
-    await Future.delayed(Duration(milliseconds: 600 + Random().nextInt(600)));
+    while (!isGameOver && currentPlayer.id == PlayerID.player2) {
+      if (currentPlayer.isStunned) {
+        await Future.delayed(const Duration(milliseconds: 1000));
+        currentPlayer.isStunned = false;
+        await _showBattleAnimation("COMPUTER STUNNED!", Icons.timer_off);
+        _switchTurn();
+        break;
+      }
 
-    final best = AIEngine.computeBestMove(grid, gridSize, aiDifficulty);
-    if (best.isNotEmpty) {
-      selectedLetter = best["letter"];
-      _executeMove(best["index"]);
+      // Thinking Delay
+      await Future.delayed(
+          Duration(milliseconds: 1000 + Random().nextInt(500)));
+
+      final best = AIEngine.computeBestMove(grid, gridSize, aiDifficulty);
+      if (best.isNotEmpty) {
+        selectedLetter = best["letter"];
+        bool scoredAgain = await _executeMoveLogic(best["index"]);
+        if (scoredAgain && !isGameOver) {
+          await Future.delayed(
+              const Duration(milliseconds: 800)); // Pause between bonus moves
+        }
+      } else {
+        break;
+      }
     }
 
     isAiThinking = false;
+    _checkGameOver();
     notifyListeners();
   }
 
   void _switchTurn() {
     _timer?.cancel();
     currentPlayer = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
-
-    // Human Stun Check
     if (currentPlayer.id == PlayerID.player1 && currentPlayer.isStunned) {
       currentPlayer.isStunned = false;
-      _showNotification("YOU ARE STUNNED: SKIPPING", 2);
-      _switchTurn();
+      _showBattleAnimation("YOU ARE STUNNED!", Icons.timer_off)
+          .then((_) => _switchTurn());
       return;
     }
-
     _startNewTurnTimer();
   }
 
   void _startNewTurnTimer() {
     _timer?.cancel();
-    if (timerLimit == null) return;
+    if (timerLimit == null || isAnimating || isAiThinking) return;
     remainingSeconds = timerLimit!;
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (remainingSeconds > 0) {
@@ -311,53 +386,44 @@ class GameProvider extends ChangeNotifier {
   }
 
   void _handleTimeout() {
-    currentPlayer.lives = max(0.0, currentPlayer.lives - 1.0);
+    currentPlayer.lives -= 1.0;
     currentPlayer.streak = 1;
-    _showNotification("${currentPlayer.name} TIMEOUT: -1 HP", 2);
-
-    if (currentPlayer.lives <= 0) {
-      _checkGameOver();
-    } else {
-      _switchTurn();
-      if (!isGameOver && isVsAI && currentPlayer.id == PlayerID.player2) {
-        _triggerAITurn();
-      }
-    }
-    notifyListeners();
+    _showBattleAnimation("TIMEOUT: -1 HP", Icons.hourglass_disabled).then((_) {
+      if (currentPlayer.lives <= 0)
+        _checkGameOver();
+      else
+        _switchTurn();
+    });
   }
 
   void _checkGameOver() {
     bool full = grid.every((c) => !c.isEmpty);
     bool dead = player1.lives <= 0 || player2.lives <= 0;
-
     if (full || dead) {
       isGameOver = true;
       _timer?.cancel();
-      _notifTimer?.cancel();
-
-      int winId = 0;
-      if (player1.lives <= 0)
-        winId = 2;
-      else if (player2.lives <= 0)
-        winId = 1;
-      else if (player1.score > player2.score)
-        winId = 1;
-      else if (player2.score > player1.score) winId = 2;
-
+      int winId = (player1.lives <= 0)
+          ? 2
+          : (player2.lives <= 0
+              ? 1
+              : (player1.score > player2.score
+                  ? 1
+                  : (player2.score > player1.score ? 2 : 0)));
       StorageService.recordWin(winId, player1.score, player2.score.toInt());
       SoundService.playSound('victory.mp3');
     }
   }
 
   void selectLetter(String l) {
-    selectedLetter = l;
-    notifyListeners();
+    if (!isAiThinking && !isAnimating) {
+      selectedLetter = l;
+      notifyListeners();
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _notifTimer?.cancel();
     super.dispose();
   }
 }
