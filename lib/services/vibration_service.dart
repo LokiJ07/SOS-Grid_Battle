@@ -3,24 +3,16 @@ import 'storage_service.dart';
 import '../core/constants.dart';
 
 class VibrationService {
-  /// Uses Flutter's native HapticFeedback to ensure compatibility
-  /// and fix the 'PluginRegistry.Registrar' build error.
+  /// Standard vibration for turn switches or small actions
   static Future<void> vibrate() async {
-    final bool isEnabled =
-        StorageService.getBool(AppConstants.keyVibrationEnabled);
-
-    if (isEnabled) {
-      // HapticFeedback works on both Android and iOS without external plugins
-      await HapticFeedback.vibrate();
+    if (StorageService.getBool(AppConstants.keyVibrationEnabled)) {
+      await HapticFeedback.mediumImpact();
     }
   }
 
-  /// Optional: Use a heavier impact for victories
+  /// Stronger vibration for Mines and SOS formations
   static Future<void> heavyVibrate() async {
-    final bool isEnabled =
-        StorageService.getBool(AppConstants.keyVibrationEnabled);
-
-    if (isEnabled) {
+    if (StorageService.getBool(AppConstants.keyVibrationEnabled)) {
       await HapticFeedback.heavyImpact();
     }
   }

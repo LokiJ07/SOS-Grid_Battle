@@ -13,29 +13,39 @@ import '../services/storage_service.dart';
 import '../core/constants.dart';
 
 class GameProvider extends ChangeNotifier {
+  // --- Core Game State ---
   late List<CellModel> grid;
   late int gridSize;
   late Player player1;
   late Player player2;
   late Player currentPlayer;
 
+  // --- Match Logic Flags ---
   String selectedLetter = "S";
   bool isGameOver = false;
-  bool isAnimating = false;
+  bool isAnimating = false; // Blocks input during battle effects
+  bool isAiThinking = false; // Blocks input during Computer Turn
+  bool _isProcessing = false; // Internal lock for move sequence
+  int shakeTrigger = 0; // Increments to trigger board shake
+
+  // --- Match Data ---
   List<SOSLine> sosLines = [];
   List<MoveModel> matchHistory = [];
   int? lastMoveIndex;
 
+  // --- Timers & Sabotage ---
   Timer? _timer;
   int? timerLimit;
   int remainingSeconds = 0;
+  bool _nextTurnHalfTime = false; // For the Time Pressure sabotage mine
+
+  // --- UI Notifications ---
   String lastEffectMessage = "";
   IconData? lastEffectIcon;
 
+  // --- Settings & Mode ---
   bool isVsAI = false;
   AIDifficulty aiDifficulty = AIDifficulty.moderate;
-  bool isAiThinking = false;
-  bool _isProcessing = false;
   GameMode currentGameMode = GameMode.battle;
 
   GameProvider() {
@@ -45,6 +55,7 @@ class GameProvider extends ChangeNotifier {
     currentPlayer = player1;
   }
 
+  /// Initializes a new game session with all features enabled
   void initGame(int size, int? limit,
       {bool vsAI = false,
       AIDifficulty diff = AIDifficulty.moderate,
@@ -54,25 +65,34 @@ class GameProvider extends ChangeNotifier {
     isVsAI = vsAI;
     aiDifficulty = diff;
     currentGameMode = mode;
+
+    // Reset Logic Flags
     isGameOver = false;
     isAnimating = false;
     isAiThinking = false;
     _isProcessing = false;
+    _nextTurnHalfTime = false;
+    shakeTrigger = 0;
+
+    // Reset Data Storage
     sosLines = [];
     matchHistory = [];
     selectedLetter = "S";
     lastMoveIndex = null;
     lastEffectMessage = "";
 
+    // Generate Fresh Grid
     grid = List.generate(
         size * size,
         (index) =>
             CellModel(index: index, row: index ~/ size, col: index % size));
 
+    // Populate Battle Items with 15% density
     if (mode == GameMode.battle) {
       _generateBattleItems(size);
     }
 
+    // Initialize Players (Supports over-healing and inventory)
     player1.reset(10.0);
     player2 = Player(
         id: PlayerID.player2,
@@ -85,35 +105,49 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Randomly scatters a mix of the 20 unique battle effects
   void _generateBattleItems(int size) {
     final random = Random();
-    int count = (size * size * 0.15).clamp(2, 200).toInt();
-    List<int> available = List.generate(size * size, (i) => i)..shuffle();
+    int totalCells = size * size;
+    int count = (totalCells * 0.15).clamp(2, 200).toInt();
+    List<int> available = List.generate(totalCells, (i) => i)..shuffle();
 
     for (int i = 0; i < count; i++) {
       int idx = available[i];
       bool isMine = random.nextBool();
       grid[idx].specialType = isMine ? SpecialType.mine : SpecialType.perk;
-
-      // Select from the first 20 effects (excluding 'none')
+      // Pull randomly from all 20 types defined in EffectType enum
       grid[idx].effectType = EffectType.values[random.nextInt(20)];
     }
   }
 
+  /// Main player input handler
   void playMove(int index) {
+    // GUARD: Reject if busy, game over, or not player's turn
     if (isGameOver ||
         isAiThinking ||
         isAnimating ||
         _isProcessing ||
         !grid[index].isEmpty) return;
     if (isVsAI && currentPlayer.id == PlayerID.player2) return;
+
     _handleMoveSequence(index);
   }
 
+  /// Orchestrates the async sequence of a single move
   Future<void> _handleMoveSequence(int index) async {
     _isProcessing = true;
+
     bool scored = await _executeMoveLogic(index);
-    if (!isGameOver && isVsAI && currentPlayer.id == PlayerID.player2) {
+
+    // Check if the board became full during this move
+    if (_checkGameOver()) {
+      _isProcessing = false;
+      return;
+    }
+
+    // AI Trigger Failsafe: Trigger AI if it's now their turn
+    if (isVsAI && currentPlayer.id == PlayerID.player2) {
       _isProcessing = false;
       _triggerAITurn();
     } else {
@@ -122,6 +156,7 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Detailed move execution: Records history, resolves items, checks SOS
   Future<bool> _executeMoveLogic(int index) async {
     lastMoveIndex = index;
     final cell = grid[index];
@@ -129,6 +164,7 @@ class GameProvider extends ChangeNotifier {
     cell.placedBy = currentPlayer.id;
     cell.isRevealed = true;
 
+    // Permanent Record for Replay System
     matchHistory.add(MoveModel(
       index: index,
       letter: selectedLetter,
@@ -136,68 +172,83 @@ class GameProvider extends ChangeNotifier {
       playerName: currentPlayer.name,
     ));
 
-    _timer?.cancel();
+    _timer?.cancel(); // Pause clock during resolution
 
+    // 1. Resolve Special Items (Mines/Perks)
     if (cell.specialType != SpecialType.none) {
       await _applyCellEffects(cell);
     }
 
-    if (isGameOver) return false;
+    if (_checkGameOver()) return false;
 
+    // 2. SOS Detection logic
     List<SOSLine> newSOS =
         SOSDetector.checkNewSOS(grid, index, gridSize, currentPlayer.id);
 
     if (newSOS.isNotEmpty) {
+      _triggerShake(); // Physical impact feedback
+
+      // Combo Math: Streak 4 = x2, 5 = x3, 6 = x4...
       int mult = currentPlayer.streak >= 4 ? (currentPlayer.streak - 2) : 1;
       currentPlayer.score += (newSOS.length * mult);
+
+      // Streak-based sound speed
       double soundSpeed = (1.0 + (currentPlayer.streak * 0.15)).clamp(1.0, 2.5);
       SoundService.playSound('score.mp3', speed: soundSpeed);
       VibrationService.vibrate();
 
       currentPlayer.streak++;
+
       for (var line in newSOS) {
-        // Create line and tag it with the current move number
-        final taggedLine = SOSLine(
+        final tagged = SOSLine(
             indices: line.indices,
             owner: currentPlayer.id,
             moveIndex: matchHistory.length - 1);
-        sosLines.add(taggedLine);
+        sosLines.add(tagged);
         for (var idx in line.indices) grid[idx].isPartOfSOS = true;
       }
-      _startNewTurnTimer();
+
+      if (_checkGameOver()) return true;
+
+      _startNewTurnTimer(); // Reset timer for bonus turn
       notifyListeners();
-      return true;
+      return true; // Extra turn granted
     } else {
       SoundService.playSound('placement.mp3');
-      currentPlayer.streak = 1;
+      currentPlayer.streak = 1; // Reset multiplier on miss
       _switchTurn();
       notifyListeners();
-      return false;
+      return false; // Turn ended
     }
   }
 
+  /// FULL IMPLEMENTATION: Logic for all 20 unique battle effects
   Future<void> _applyCellEffects(CellModel cell) async {
     isAnimating = true;
     final opponent = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
 
+    // Shield Mechanic: Consumes shield and cancels mine
     if (cell.specialType == SpecialType.mine && currentPlayer.hasShield) {
       currentPlayer.hasShield = false;
-      await _showBattleAnimation("SHIELD BLOCKED!", Icons.security);
+      await _showBattleAnimation("SHIELD BLOCKED MINE!", Icons.security);
       isAnimating = false;
       return;
     }
+
+    if (cell.specialType == SpecialType.mine) _triggerShake();
 
     String msg = "";
     IconData icon = Icons.bolt;
 
     switch (cell.effectType) {
+      // --- 10 MINES (TRAPS) ---
       case EffectType.stun:
         currentPlayer.isStunned = true;
         msg = "STUNNED! SKIP TURN";
         icon = Icons.timer_off;
         break;
       case EffectType.halfLife:
-        currentPlayer.lives -= 0.5;
+        currentPlayer.lives -= 0.5; // Supports Negatives
         msg = "HALF-LIFE! -0.5 HP";
         icon = Icons.heart_broken;
         break;
@@ -231,12 +282,12 @@ class GameProvider extends ChangeNotifier {
         break;
       case EffectType.bombRadius:
         currentPlayer.score -= 3;
-        msg = "BOMB EXPLOSION!";
+        msg = "BOMB EXPLOSION! -3";
         icon = Icons.settings_input_antenna;
         break;
       case EffectType.timePressure:
-        remainingSeconds = (remainingSeconds / 2).floor();
-        msg = "TIME PRESSURE!";
+        _nextTurnHalfTime = true; // Sabotage opponent next turn
+        msg = "SABOTAGE: HALF TIME";
         icon = Icons.speed;
         break;
       case EffectType.scoreWipe:
@@ -244,6 +295,8 @@ class GameProvider extends ChangeNotifier {
         msg = "SCORE WIPE! -5";
         icon = Icons.delete_forever;
         break;
+
+      // --- 10 PERKS (POWER-UPS) ---
       case EffectType.drainOpponentLife:
         opponent.lives -= 1.0;
         msg = "ENEMY -1 HP";
@@ -261,7 +314,7 @@ class GameProvider extends ChangeNotifier {
         icon = Icons.health_and_safety;
         break;
       case EffectType.extraHeart:
-        currentPlayer.lives += 2.0;
+        currentPlayer.lives += 2.0; // Unlimited Over-heal
         msg = "EXTRA HEART! +2 HP";
         icon = Icons.add_box;
         break;
@@ -281,9 +334,9 @@ class GameProvider extends ChangeNotifier {
         icon = Icons.shield;
         break;
       case EffectType.revealRadius:
-        currentPlayer.inventory.add(EffectType.revealRadius);
-        await _showBattleAnimation(
-            "EARNED: TACTICAL INTEL", Icons.psychology_alt);
+        currentPlayer.inventory.add(EffectType.revealRadius); // Tactical skill
+        msg = "TACTICAL INTEL EARNED";
+        icon = Icons.psychology_alt;
         break;
       case EffectType.doublePoints:
         currentPlayer.score += 2;
@@ -295,56 +348,173 @@ class GameProvider extends ChangeNotifier {
         msg = "TIMER BONUS +10S";
         icon = Icons.more_time;
         break;
-      case EffectType.none:
-        msg = "ITEM FOUND!";
-        icon = Icons.bolt;
+
+      default:
         break;
     }
 
     VibrationService.vibrate();
-    notifyListeners();
+    notifyListeners(); // Update ScoreBoard immediately
     await _showBattleAnimation(msg, icon);
     isAnimating = false;
   }
 
-  void _revealNearby(int r, int c) {
-    for (int dr = -1; dr <= 1; dr++) {
-      for (int dc = -1; dc <= 1; dc++) {
-        int nr = r + dr, nc = c + dc;
-        if (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
-          grid[nr * gridSize + nc].isRevealed = true;
-        }
+  /// Automated Computer Intelligence processing loop
+  Future<void> _triggerAITurn() async {
+    if (isGameOver || isAiThinking) return;
+    isAiThinking = true;
+    notifyListeners();
+
+    while (!isGameOver && currentPlayer.id == PlayerID.player2) {
+      // 1. AI Stun Check
+      if (currentPlayer.isStunned) {
+        await Future.delayed(const Duration(milliseconds: 1000));
+        currentPlayer.isStunned = false;
+        await _showBattleAnimation("COMPUTER STUNNED!", Icons.timer_off);
+        _switchTurn();
+        break;
       }
+
+      // 2. Artificial thinking delay for visibility
+      await Future.delayed(
+          Duration(milliseconds: 1000 + Random().nextInt(500)));
+
+      // 3. Compute optimal move based on set difficulty
+      final best = AIEngine.computeBestMove(grid, gridSize, aiDifficulty);
+      if (best.isNotEmpty) {
+        selectedLetter = best["letter"];
+        bool scored = await _executeMoveLogic(best["index"]);
+        if (isGameOver) break;
+        // Brief pause between AI combo moves so player can follow along
+        if (scored) await Future.delayed(const Duration(milliseconds: 800));
+      } else
+        break;
     }
+
+    isAiThinking = false;
+    _checkGameOver();
+    notifyListeners();
   }
 
-  // NEW METHOD: The Gamble Scan
+  /// Logic for the Tactical Intel Scan skill
   Future<void> useScanSkill(EffectType target) async {
     isAnimating = true;
-    _timer?.cancel(); // Pause turn timer during scan
-
-    bool foundAny = false;
+    _timer?.cancel();
+    bool found = false;
     for (var cell in grid) {
-      // ONLY reveal the specific type the player gambled on
       if (cell.effectType == target && !cell.isRevealed) {
         cell.isRevealed = true;
-        foundAny = true;
+        found = true;
       }
     }
-
-    // Consume the skill
     currentPlayer.inventory.remove(EffectType.revealRadius);
+    await _showBattleAnimation(found ? "SCAN SUCCESSFUL!" : "SCAN FAILED",
+        found ? Icons.radar : Icons.search_off);
+    isAnimating = false;
 
-    if (foundAny) {
-      await _showBattleAnimation(
-          "SCAN SUCCESSFUL: TARGETS MARKED", Icons.radar);
-    } else {
-      await _showBattleAnimation(
-          "SCAN FAILED: NO MATCHES FOUND", Icons.search_off);
+    // Resume flow
+    _startNewTurnTimer();
+    if (isVsAI && currentPlayer.id == PlayerID.player2) _triggerAITurn();
+    notifyListeners();
+  }
+
+  /// Switches active player and handles stun skips
+  void _switchTurn() {
+    _timer?.cancel();
+    currentPlayer = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
+
+    // Stun logic: If the next player is stunned, skip them recursively
+    if (currentPlayer.isStunned) {
+      currentPlayer.isStunned = false;
+      _showBattleAnimation(
+              "${currentPlayer.name.toUpperCase()} STUNNED!", Icons.timer_off)
+          .then((_) {
+        _switchTurn();
+      });
+      return;
     }
 
-    isAnimating = false;
+    // Failsafe: Trigger AI if it's their turn
+    if (isVsAI && currentPlayer.id == PlayerID.player2 && !isGameOver) {
+      _triggerAITurn();
+    }
+
     _startNewTurnTimer();
+    notifyListeners();
+  }
+
+  /// Handles the turn countdown timer and sabotage effects
+  void _startNewTurnTimer() {
+    _timer?.cancel();
+    if (timerLimit == null || isAnimating || isAiThinking) return;
+
+    int baseTime = timerLimit!;
+    // Apply sabotage if Time Pressure mine was hit previously
+    if (_nextTurnHalfTime) {
+      baseTime = (baseTime / 2).floor().clamp(3, 30);
+      _nextTurnHalfTime = false;
+    }
+
+    remainingSeconds = baseTime;
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (remainingSeconds > 0) {
+        remainingSeconds--;
+        notifyListeners();
+      } else {
+        _handleTimeout();
+      }
+    });
+  }
+
+  void _handleTimeout() {
+    currentPlayer.lives -= 1.0;
+    currentPlayer.streak = 1;
+    _showBattleAnimation("${currentPlayer.name.toUpperCase()} TIMEOUT!",
+            Icons.hourglass_disabled)
+        .then((_) {
+      if (!_checkGameOver()) _switchTurn();
+    });
+  }
+
+  /// Global end-of-game monitor
+  bool _checkGameOver() {
+    bool isBoardFull = grid.every((c) => !c.isEmpty);
+    bool isAnyoneDead = player1.lives <= 0 || player2.lives <= 0;
+
+    if (isBoardFull || isAnyoneDead) {
+      isGameOver = true;
+      _timer?.cancel();
+
+      int winId = 0;
+      if (player1.lives <= 0)
+        winId = 2;
+      else if (player2.lives <= 0)
+        winId = 1;
+      else if (player1.score > player2.score)
+        winId = 1;
+      else if (player2.score > player1.score) winId = 2;
+
+      String res = winId == 1
+          ? "Player 1 Wins"
+          : (winId == 2 ? "${player2.name} Wins" : "Draw");
+
+      // AUTO SAVE DATA PERMANENTLY
+      StorageService.saveMatchToArchive(
+          history: matchHistory,
+          sosLines: sosLines,
+          gridSize: gridSize,
+          result: res);
+      StorageService.recordWin(winId, player1.score, player2.score.toInt());
+      SoundService.playSound('victory.mp3');
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  void _triggerShake() {
+    shakeTrigger++;
+    VibrationService.heavyVibrate();
     notifyListeners();
   }
 
@@ -356,97 +526,6 @@ class GameProvider extends ChangeNotifier {
     lastEffectMessage = "";
     lastEffectIcon = null;
     notifyListeners();
-  }
-
-  Future<void> _triggerAITurn() async {
-    if (isGameOver || isAiThinking) return;
-    isAiThinking = true;
-    notifyListeners();
-
-    while (!isGameOver && currentPlayer.id == PlayerID.player2) {
-      if (currentPlayer.isStunned) {
-        await Future.delayed(const Duration(milliseconds: 1000));
-        currentPlayer.isStunned = false;
-        await _showBattleAnimation("COMPUTER STUNNED!", Icons.timer_off);
-        _switchTurn();
-        break;
-      }
-      await Future.delayed(
-          Duration(milliseconds: 1000 + Random().nextInt(500)));
-      final best = AIEngine.computeBestMove(grid, gridSize, aiDifficulty);
-      if (best.isNotEmpty) {
-        selectedLetter = best["letter"];
-        bool scoredAgain = await _executeMoveLogic(best["index"]);
-        if (scoredAgain && !isGameOver)
-          await Future.delayed(const Duration(milliseconds: 800));
-      } else
-        break;
-    }
-    isAiThinking = false;
-    _checkGameOver();
-    notifyListeners();
-  }
-
-  void _switchTurn() {
-    _timer?.cancel();
-    currentPlayer = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
-    if (currentPlayer.id == PlayerID.player1 && currentPlayer.isStunned) {
-      currentPlayer.isStunned = false;
-      _showBattleAnimation("YOU ARE STUNNED!", Icons.timer_off)
-          .then((_) => _switchTurn());
-      return;
-    }
-    _startNewTurnTimer();
-  }
-
-  void _startNewTurnTimer() {
-    _timer?.cancel();
-    if (timerLimit == null || isAnimating || isAiThinking) return;
-    remainingSeconds = timerLimit!;
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (remainingSeconds > 0) {
-        remainingSeconds--;
-        notifyListeners();
-      } else
-        _handleTimeout();
-    });
-  }
-
-  void _handleTimeout() {
-    currentPlayer.lives -= 1.0;
-    currentPlayer.streak = 1;
-    _showBattleAnimation("TIMEOUT: -1 HP", Icons.hourglass_disabled).then((_) {
-      if (currentPlayer.lives <= 0)
-        _checkGameOver();
-      else
-        _switchTurn();
-    });
-  }
-
-  void _checkGameOver() {
-    bool full = grid.every((c) => !c.isEmpty);
-    bool dead = player1.lives <= 0 || player2.lives <= 0;
-    if (full || dead) {
-      isGameOver = true;
-      _timer?.cancel();
-      int winId = (player1.lives <= 0)
-          ? 2
-          : (player2.lives <= 0
-              ? 1
-              : (player1.score > player2.score
-                  ? 1
-                  : (player2.score > player1.score ? 2 : 0)));
-      String resText = winId == 1
-          ? "Player 1 Wins"
-          : (winId == 2 ? "${player2.name} Wins" : "Draw");
-      StorageService.saveMatchToArchive(
-          history: matchHistory,
-          sosLines: sosLines,
-          gridSize: gridSize,
-          result: resText);
-      StorageService.recordWin(winId, player1.score, player2.score.toInt());
-      SoundService.playSound('victory.mp3');
-    }
   }
 
   void selectLetter(String l) {
