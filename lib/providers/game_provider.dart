@@ -281,9 +281,9 @@ class GameProvider extends ChangeNotifier {
         icon = Icons.shield;
         break;
       case EffectType.revealRadius:
-        msg = "AREA REVEALED";
-        icon = Icons.visibility;
-        _revealNearby(cell.row, cell.col);
+        currentPlayer.inventory.add(EffectType.revealRadius);
+        await _showBattleAnimation(
+            "EARNED: TACTICAL INTEL", Icons.psychology_alt);
         break;
       case EffectType.doublePoints:
         currentPlayer.score += 2;
@@ -316,6 +316,36 @@ class GameProvider extends ChangeNotifier {
         }
       }
     }
+  }
+
+  // NEW METHOD: The Gamble Scan
+  Future<void> useScanSkill(EffectType target) async {
+    isAnimating = true;
+    _timer?.cancel(); // Pause turn timer during scan
+
+    bool foundAny = false;
+    for (var cell in grid) {
+      // ONLY reveal the specific type the player gambled on
+      if (cell.effectType == target && !cell.isRevealed) {
+        cell.isRevealed = true;
+        foundAny = true;
+      }
+    }
+
+    // Consume the skill
+    currentPlayer.inventory.remove(EffectType.revealRadius);
+
+    if (foundAny) {
+      await _showBattleAnimation(
+          "SCAN SUCCESSFUL: TARGETS MARKED", Icons.radar);
+    } else {
+      await _showBattleAnimation(
+          "SCAN FAILED: NO MATCHES FOUND", Icons.search_off);
+    }
+
+    isAnimating = false;
+    _startNewTurnTimer();
+    notifyListeners();
   }
 
   Future<void> _showBattleAnimation(String msg, IconData icon) async {

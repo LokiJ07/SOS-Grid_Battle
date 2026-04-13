@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'player.dart';
+import 'cell_model.dart';
 
 enum PlayerID { player1, player2 }
 
@@ -11,7 +11,9 @@ class Player {
   double lives;
   int streak;
   bool isStunned;
-  bool hasShield; // NEW: Added this property
+  bool hasShield;
+  // NEW: Store earned skills
+  List<EffectType> inventory = [];
 
   Player({
     required this.id,
@@ -21,15 +23,15 @@ class Player {
     this.lives = 10.0,
     this.streak = 1,
     this.isStunned = false,
-    this.hasShield = false, // Default to false
+    this.hasShield = false,
   });
 
-  /// Resets the player for a new game
   void reset(double initialLives) {
     score = 0;
     lives = initialLives;
     streak = 1;
     isStunned = false;
-    hasShield = false; // Reset shield status
+    hasShield = false;
+    inventory = []; // Reset skills
   }
 }
