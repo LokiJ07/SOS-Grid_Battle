@@ -7,6 +7,7 @@ import 'board_size_screen.dart';
 import 'how_to_play_screen.dart';
 import 'statistics_screen.dart';
 import 'settings_screen.dart';
+import 'match_archive_screen.dart';
 
 class MainMenuScreen extends StatelessWidget {
   const MainMenuScreen({super.key});
@@ -40,16 +41,16 @@ class MainMenuScreen extends StatelessWidget {
                     color: Colors.white24,
                     fontSize: 10,
                     letterSpacing: 4,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w900, // Fixed
                   ),
                 ).animate().fadeIn(delay: 500.ms),
 
-                const SizedBox(height: 60),
+                const SizedBox(height: 50),
 
                 // Main Game Modes
                 MenuButton(
                   label: 'SOLO VS COMPUTER',
-                  icon: Icons.computer_rounded, // ICON ADDED
+                  icon: Icons.computer_rounded,
                   onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -58,7 +59,7 @@ class MainMenuScreen extends StatelessWidget {
 
                 MenuButton(
                   label: 'LOCAL MULTIPLAYER',
-                  icon: Icons.people_alt_rounded, // ICON ADDED
+                  icon: Icons.people_alt_rounded,
                   onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -68,10 +69,20 @@ class MainMenuScreen extends StatelessWidget {
 
                 const SizedBox(height: 20),
 
-                // Sub Menus
+                // HISTORY & STATS
+                MenuButton(
+                  label: 'MATCH ARCHIVE',
+                  icon: Icons.history_rounded,
+                  isSecondary: true,
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const MatchArchiveScreen())),
+                ),
+
                 MenuButton(
                   label: 'HOW TO PLAY',
-                  icon: Icons.help_outline_rounded, // ICON ADDED
+                  icon: Icons.help_outline_rounded,
                   isSecondary: true,
                   onPressed: () => Navigator.push(
                       context,
@@ -81,7 +92,7 @@ class MainMenuScreen extends StatelessWidget {
 
                 MenuButton(
                   label: 'STATISTICS',
-                  icon: Icons.bar_chart_rounded, // ICON ADDED
+                  icon: Icons.bar_chart_rounded,
                   isSecondary: true,
                   onPressed: () => Navigator.push(
                       context,
@@ -91,7 +102,7 @@ class MainMenuScreen extends StatelessWidget {
 
                 MenuButton(
                   label: 'SETTINGS',
-                  icon: Icons.settings_rounded, // ICON ADDED
+                  icon: Icons.settings_rounded,
                   isSecondary: true,
                   onPressed: () => Navigator.push(
                       context,
@@ -103,7 +114,7 @@ class MainMenuScreen extends StatelessWidget {
 
                 MenuButton(
                   label: 'EXIT GAME',
-                  icon: Icons.power_settings_new_rounded, // ICON ADDED
+                  icon: Icons.power_settings_new_rounded,
                   isSecondary: true,
                   onPressed: () => SystemNavigator.pop(),
                 ),
