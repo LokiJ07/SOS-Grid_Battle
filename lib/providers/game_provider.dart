@@ -33,6 +33,8 @@ class GameProvider extends ChangeNotifier {
 
   bool isVsAI = false;
   AIDifficulty aiDifficulty = AIDifficulty.moderate;
+  GameMode currentGameMode =
+      GameMode.battle; // Ensure this is named EXACTLY like this
   bool isAiThinking = false; // Blocks input during Computer Turn
   bool _isProcessing = false; // Logic lock for move sequences
 
