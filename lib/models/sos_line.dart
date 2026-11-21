@@ -17,6 +17,6 @@ class SOSLine {
   factory SOSLine.fromJson(Map<String, dynamic> json) => SOSLine(
         indices: List<int>.from(json['indices']),
         owner: PlayerID.values[json['owner']],
-        moveIndex: json['moveIndex'],
+        moveIndex: (json['moveIndex'] as num?)?.toInt() ?? 0,
       );
 }
