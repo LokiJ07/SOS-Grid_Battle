@@ -28,9 +28,7 @@ class StorageService {
       required List<SOSLine> sosLines, // NEW PARAMETER
       required int gridSize,
       required String result}) async {
-    List<dynamic> archive = [];
-    String? existingData = _prefs.getString(keyMatchArchive);
-    if (existingData != null) archive = jsonDecode(existingData);
+    List<dynamic> archive = getMatchArchive();
 
     Map<String, dynamic> newMatch = {
       'date': DateTime.now().toIso8601String(),
@@ -46,9 +44,27 @@ class StorageService {
   }
 
   static List<dynamic> getMatchArchive() {
-    String? data = _prefs.getString(keyMatchArchive);
+    final data = _prefs.getString(keyMatchArchive);
     if (data == null) return [];
-    return jsonDecode(data);
+    try {
+      final decoded = jsonDecode(data);
+      return decoded is List ? decoded : [];
+    } on FormatException {
+      // An outdated or corrupt local archive must not crash the UI.
+      return [];
+    }
+  }
+
+  static Future<void> resetAllData() async {
+    for (final key in [
+      AppConstants.keyGamesPlayed,
+      AppConstants.keyP1Wins,
+      AppConstants.keyP2Wins,
+      AppConstants.keyHighScore,
+      keyMatchArchive,
+    ]) {
+      await _prefs.remove(key);
+    }
   }
 
   static Future<void> recordWin(int winnerId, int p1Score, int p2Score) async {
