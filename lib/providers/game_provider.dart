@@ -24,6 +24,8 @@ class GameProvider extends ChangeNotifier {
   bool isAnimating = false;
   bool isAiThinking = false;
   bool _isProcessing = false;
+  bool _timeoutInProgress = false;
+  int _matchGeneration = 0;
   int shakeTrigger = 0;
 
   List<SOSLine> sosLines = [];
@@ -53,6 +55,7 @@ class GameProvider extends ChangeNotifier {
       {bool vsAI = false,
       AIDifficulty diff = AIDifficulty.moderate,
       GameMode mode = GameMode.battle}) {
+    _matchGeneration++;
     gridSize = size;
     timerLimit = limit;
     isVsAI = vsAI;
@@ -62,6 +65,7 @@ class GameProvider extends ChangeNotifier {
     isAnimating = false;
     isAiThinking = false;
     _isProcessing = false;
+    _timeoutInProgress = false;
     _nextTurnHalfTime = false;
     shakeTrigger = 0;
     sosLines = [];
@@ -360,7 +364,10 @@ class GameProvider extends ChangeNotifier {
         break;
     }
     isAiThinking = false;
-    _checkGameOver();
+    if (!_checkGameOver() && currentPlayer.id == PlayerID.player1) {
+      // During the AI turn the timer is paused. Restart it for the human.
+      _startNewTurnTimer();
+    }
     notifyListeners();
   }
 
@@ -416,14 +423,25 @@ class GameProvider extends ChangeNotifier {
     });
   }
 
-  void _handleTimeout() {
+  Future<void> _handleTimeout() async {
+    if (isGameOver || _timeoutInProgress || _isProcessing) return;
+    _timeoutInProgress = true;
+    _timer?.cancel(); // Prevent repeated HP loss during the animation.
+    final generation = _matchGeneration;
+    remainingSeconds = 0;
     currentPlayer.lives -= 1.0;
-    _showBattleAnimation("TIMEOUT: -1 HP", Icons.hourglass_disabled).then((_) {
-      if (!_checkGameOver()) _switchTurn();
-    });
+    notifyListeners();
+
+    await _showBattleAnimation("TIMEOUT: -1 HP", Icons.hourglass_disabled);
+    // An old timeout must never change a newly started match.
+    if (generation != _matchGeneration) return;
+    _timeoutInProgress = false;
+    if (!_checkGameOver()) _switchTurn();
   }
 
   bool _checkGameOver() {
+    // Saving a match or its statistics must happen exactly once.
+    if (isGameOver) return true;
     bool full = grid.every((c) => !c.isEmpty);
     bool dead = player1.lives <= 0 || player2.lives <= 0;
     if (full || dead) {
