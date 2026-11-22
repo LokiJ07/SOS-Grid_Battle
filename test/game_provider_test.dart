@@ -106,15 +106,17 @@ void main() {
 
   testWidgets('timeout subtracts exactly one HP and locks input',
       (tester) async {
-    final game = GameProvider()..initGame(3, 1, mode: GameMode.classic);
-    await tester.pump(const Duration(seconds: 1));
+    final game = GameProvider()..initGame(3, 5, mode: GameMode.classic);
+    await tester.pump(const Duration(seconds: 5));
     expect(game.player1.lives, 9);
     game.playMove(0);
     expect(game.grid[0].letter, isEmpty);
 
+    // Advance past P1's 2s animation, but not past P2's own 5s turn.
     await tester.pump(const Duration(seconds: 3));
     await tester.pump();
     expect(game.player1.lives, 9);
+    expect(game.player2.lives, 10);
     expect(game.currentPlayer.id, PlayerID.player2);
     game.dispose();
   });
