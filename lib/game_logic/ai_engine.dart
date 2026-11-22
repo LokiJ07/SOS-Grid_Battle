@@ -7,7 +7,8 @@ import 'sos_detector.dart';
 class AIEngine {
   /// Entry point for AI decision making
   static Map<String, dynamic> computeBestMove(
-      List<CellModel> grid, int size, AIDifficulty diff) {
+      List<CellModel> grid, int size, AIDifficulty diff, {Random? random}) {
+    final rng = random ?? Random();
     List<int> empty = [];
     for (int i = 0; i < grid.length; i++) {
       if (grid[i].isEmpty) empty.add(i);
@@ -19,8 +20,8 @@ class AIEngine {
     // Completely random placement
     if (diff == AIDifficulty.easy) {
       return {
-        "index": empty[Random().nextInt(empty.length)],
-        "letter": Random().nextBool() ? "S" : "O"
+        "index": empty[rng.nextInt(empty.length)],
+        "letter": rng.nextBool() ? "S" : "O"
       };
     }
 
@@ -29,12 +30,12 @@ class AIEngine {
     String bestLetter = "S";
 
     // Shuffle empty indices to make AI feel more natural/less robotic
-    empty.shuffle();
+    empty.shuffle(rng);
 
     // Iterate through every possibility (Empty Cell + S or O)
     for (int index in empty) {
       for (String letter in ["S", "O"]) {
-        int score = _evaluateMove(grid, index, letter, size, diff);
+        int score = _evaluateMove(grid, index, letter, size, diff, rng);
 
         if (score > bestScore) {
           bestScore = score;
@@ -49,7 +50,7 @@ class AIEngine {
 
   /// Heuristic evaluation function to score a potential move
   static int _evaluateMove(List<CellModel> grid, int index, String letter,
-      int size, AIDifficulty diff) {
+      int size, AIDifficulty diff, Random rng) {
     int score = 0;
     final cell = grid[index];
 
@@ -75,23 +76,18 @@ class AIEngine {
       score += opponentSOS.length * 2000;
     }
 
-    // 3. BATTLE ITEM AWARENESS (Hard and above)
-    if (diff == AIDifficulty.hard || diff == AIDifficulty.expert) {
-      // If the cell was REVEALED by Tactical Intel, AI knows EXACTLY what it is
-      if (cell.isRevealed) {
-        score += _scoreSpecificItem(cell.effectType, cell.specialType);
-      } else {
-        // If hidden, AI only knows it's a general SpecialType
-        if (cell.specialType == SpecialType.perk) score += 500;
-        if (cell.specialType == SpecialType.mine) score -= 1000;
-      }
+    // Never peek at undisclosed mines or perks. Both players must use
+    // only the information visible on the board.
+    if ((diff == AIDifficulty.hard || diff == AIDifficulty.expert) &&
+        cell.isRevealed && cell.specialType != SpecialType.none) {
+      score += _scoreSpecificItem(cell.effectType, cell.specialType);
     }
 
     // 4. RISK CALCULATION (Expert only)
     if (diff == AIDifficulty.expert) {
       // AI checks if placing this letter creates an "S _ S" or "S O _"
       // setup that the player can exploit on their very next turn.
-      score -= _calculateSetupRisk(grid, index, letter, size);
+      score -= _calculateSetupRisk(grid, index, letter, size, rng);
     }
 
     return score;
@@ -132,14 +128,14 @@ class AIEngine {
 
   /// Expert logic to avoid helping the player
   static int _calculateSetupRisk(
-      List<CellModel> grid, int index, String letter, int size) {
+      List<CellModel> grid, int index, String letter, int size, Random rng) {
     int risk = 0;
     // Simple heuristic: Placing an 'O' is generally riskier than an 'S'
     // because SOS patterns usually end with 'S'.
     if (letter == "O") risk += 100;
 
     // Add a layer of randomness so the Expert AI isn't 100% predictable
-    risk += Random().nextInt(50);
+    risk += rng.nextInt(50);
 
     return risk;
   }

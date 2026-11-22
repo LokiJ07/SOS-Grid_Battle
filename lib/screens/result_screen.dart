@@ -5,6 +5,7 @@ import '../providers/game_provider.dart';
 import '../core/constants.dart';
 import '../widgets/menu_button.dart';
 import 'main_menu_screen.dart';
+import 'game_screen.dart';
 import 'match_history_screen.dart'; // Ensure this file exists
 
 class ResultScreen extends StatelessWidget {
@@ -144,7 +145,10 @@ class ResultScreen extends StatelessWidget {
                             diff: game.aiDifficulty,
                             mode: game.currentGameMode // Corrected variable
                             );
-                        Navigator.pop(context);
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => const GameScreen()),
+                        );
                       },
                       child: const Text(
                         "INSTANT REMATCH",

@@ -27,6 +27,36 @@ enum EffectType {
   none // Added a 'none' value as a safety fallback
 }
 
+/// Battle loot tables are intentionally disjoint:
+/// mines are harmful and perks are beneficial.
+class BattleEffectPools {
+  static const List<EffectType> mines = [
+    EffectType.stun,
+    EffectType.halfLife,
+    EffectType.minusScore,
+    EffectType.theGreatSwap,
+    EffectType.streakReset,
+    EffectType.poison,
+    EffectType.vampireTrap,
+    EffectType.bombRadius,
+    EffectType.timePressure,
+    EffectType.scoreWipe,
+  ];
+
+  static const List<EffectType> perks = [
+    EffectType.drainOpponentLife,
+    EffectType.drainOpponentScore,
+    EffectType.lifeSteal,
+    EffectType.extraHeart,
+    EffectType.comboBooster,
+    EffectType.jackpot,
+    EffectType.shield,
+    EffectType.revealRadius,
+    EffectType.doublePoints,
+    EffectType.timerBonus,
+  ];
+}
+
 class CellModel {
   final int index;
   final int row;
