@@ -11,9 +11,16 @@ class GridCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cell = context.select((GameProvider p) => p.grid[index]);
-    final isLastMove =
-        context.select((GameProvider p) => p.lastMoveIndex == index);
+    // Select immutable values instead of the mutable CellModel reference.
+    // Provider's equality check then notices letter/hint/SOS changes.
+    final snapshot = context.select<GameProvider,
+        (String, bool, bool, PlayerID?, SpecialType, bool)>((p) {
+      final cell = p.grid[index];
+      return (cell.letter, cell.isRevealed, cell.isPartOfSOS,
+          cell.placedBy, cell.specialType, p.lastMoveIndex == index);
+    });
+    final cell = context.read<GameProvider>().grid[index];
+    final isLastMove = snapshot.$6;
 
     // Prepare hint icon for revealed, empty, special cells
     Widget? hintIcon;
