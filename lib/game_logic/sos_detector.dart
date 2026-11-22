@@ -44,9 +44,9 @@ class SOSDetector {
     int r1 = r + dr, c1 = c + dc, r2 = r + 2 * dr, c2 = c + 2 * dc;
     if (_v(r1, c1, s) && _v(r2, c2, s)) {
       if (g[r1 * s + c1].letter == "O" && g[r2 * s + c2].letter == "S") {
-        return [
-          SOSLine(indices: [r * s + c, r1 * s + c1, r2 * s + c2], owner: o)
-        ];
+        // Store line points in board order, regardless of which S was last.
+        final indices = [r * s + c, r1 * s + c1, r2 * s + c2]..sort();
+        return [SOSLine(indices: indices, owner: o)];
       }
     }
     return [];

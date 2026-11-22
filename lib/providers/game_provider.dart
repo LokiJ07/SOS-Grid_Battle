@@ -24,6 +24,8 @@ class GameProvider extends ChangeNotifier {
   bool isAnimating = false;
   bool isAiThinking = false;
   bool _isProcessing = false;
+  bool _timeoutInProgress = false;
+  int _matchGeneration = 0;
   int shakeTrigger = 0;
 
   List<SOSLine> sosLines = [];
@@ -33,7 +35,8 @@ class GameProvider extends ChangeNotifier {
   Timer? _timer;
   int? timerLimit;
   int remainingSeconds = 0;
-  bool _nextTurnHalfTime = false;
+  final Map<PlayerID, int> _pendingTimeBonuses = {};
+  final Map<PlayerID, bool> _pendingHalfTime = {};
 
   String lastEffectMessage = "";
   IconData? lastEffectIcon;
@@ -53,6 +56,7 @@ class GameProvider extends ChangeNotifier {
       {bool vsAI = false,
       AIDifficulty diff = AIDifficulty.moderate,
       GameMode mode = GameMode.battle}) {
+    _matchGeneration++;
     gridSize = size;
     timerLimit = limit;
     isVsAI = vsAI;
@@ -62,7 +66,10 @@ class GameProvider extends ChangeNotifier {
     isAnimating = false;
     isAiThinking = false;
     _isProcessing = false;
-    _nextTurnHalfTime = false;
+    _timeoutInProgress = false;
+    _pendingTimeBonuses.clear();
+    _pendingHalfTime.clear();
+    remainingSeconds = 0;
     shakeTrigger = 0;
     sosLines = [];
     matchHistory = [];
@@ -99,7 +106,8 @@ class GameProvider extends ChangeNotifier {
       int idx = available[i];
       bool isMine = random.nextBool();
       grid[idx].specialType = isMine ? SpecialType.mine : SpecialType.perk;
-      grid[idx].effectType = EffectType.values[random.nextInt(20)];
+      final effects = isMine ? BattleEffectPools.mines : BattleEffectPools.perks;
+      grid[idx].effectType = effects[random.nextInt(effects.length)];
     }
   }
 
@@ -108,28 +116,30 @@ class GameProvider extends ChangeNotifier {
         isAiThinking ||
         isAnimating ||
         _isProcessing ||
+        _timeoutInProgress ||
+        index < 0 ||
+        index >= grid.length ||
         !grid[index].isEmpty) return;
     if (isVsAI && currentPlayer.id == PlayerID.player2) return;
     _handleMoveSequence(index);
   }
 
   Future<void> _handleMoveSequence(int index) async {
+    final generation = _matchGeneration;
     _isProcessing = true;
-    bool scored = await _executeMoveLogic(index);
-    if (_checkGameOver()) {
-      _isProcessing = false;
-      return;
-    }
-    if (isVsAI && currentPlayer.id == PlayerID.player2) {
-      _isProcessing = false;
+    await _executeMoveLogic(index);
+    // An old move must not mutate a rematch started during an animation.
+    if (generation != _matchGeneration) return;
+    _isProcessing = false;
+    if (_checkGameOver()) return;
+    if (isVsAI && currentPlayer.id == PlayerID.player2 && !isAiThinking) {
       _triggerAITurn();
-    } else {
-      _isProcessing = false;
     }
     notifyListeners();
   }
 
   Future<bool> _executeMoveLogic(int index) async {
+    final generation = _matchGeneration;
     lastMoveIndex = index;
     final cell = grid[index];
     cell.letter = selectedLetter;
@@ -145,10 +155,10 @@ class GameProvider extends ChangeNotifier {
     _timer?.cancel();
     if (cell.specialType != SpecialType.none) {
       await _applyCellEffects(cell);
+      if (generation != _matchGeneration) return false;
     }
 
-    if (_checkGameOver()) return false;
-
+    // Always score the placed letter before checking for a full board.
     List<SOSLine> newSOS =
         SOSDetector.checkNewSOS(grid, index, gridSize, currentPlayer.id);
 
@@ -177,18 +187,20 @@ class GameProvider extends ChangeNotifier {
     } else {
       SoundService.playSound('placement.mp3');
       currentPlayer.streak = 1;
-      _switchTurn();
+      if (!_checkGameOver()) _switchTurn();
       notifyListeners();
       return false;
     }
   }
 
   Future<void> _applyCellEffects(CellModel cell) async {
+    final generation = _matchGeneration;
     isAnimating = true;
     final opponent = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
     if (cell.specialType == SpecialType.mine && currentPlayer.hasShield) {
       currentPlayer.hasShield = false;
       await _showBattleAnimation("SHIELD BLOCKED!", Icons.security);
+      if (generation != _matchGeneration) return;
       isAnimating = false;
       return;
     }
@@ -241,8 +253,13 @@ class GameProvider extends ChangeNotifier {
         icon = Icons.settings_input_antenna;
         break;
       case EffectType.timePressure:
-        _nextTurnHalfTime = true;
-        msg = "HALF TIME NEXT";
+        if (timerLimit == null) {
+          currentPlayer.lives -= 0.5;
+          msg = "TRAP: -0.5 HP";
+        } else {
+          _pendingHalfTime[currentPlayer.id] = true;
+          msg = "HALF TIME NEXT TURN";
+        }
         icon = Icons.speed;
         break;
       case EffectType.scoreWipe:
@@ -297,8 +314,16 @@ class GameProvider extends ChangeNotifier {
         icon = Icons.looks_two;
         break;
       case EffectType.timerBonus:
-        remainingSeconds += 10;
-        msg = "TIME +10S";
+        if (timerLimit == null ||
+            (isVsAI && currentPlayer.id == PlayerID.player2)) {
+          // A time bonus should never be wasted in an untimed/AI turn.
+          currentPlayer.score += 2;
+          msg = "BONUS SCORE +2";
+        } else {
+          _pendingTimeBonuses[currentPlayer.id] =
+              (_pendingTimeBonuses[currentPlayer.id] ?? 0) + 10;
+          msg = "NEXT TURN +10S";
+        }
         icon = Icons.more_time;
         break;
       default:
@@ -307,11 +332,13 @@ class GameProvider extends ChangeNotifier {
     VibrationService.vibrate();
     notifyListeners();
     await _showBattleAnimation(msg, icon);
+    if (generation != _matchGeneration) return;
     isAnimating = false;
   }
 
   /// NEW: AI Brain Enhancement for skills
   Future<void> _aiCheckAndUseSkills() async {
+    final generation = _matchGeneration;
     if (!currentPlayer.inventory.contains(EffectType.revealRadius)) return;
 
     // AI DECISION LOGIC
@@ -325,46 +352,57 @@ class GameProvider extends ChangeNotifier {
     }
 
     await Future.delayed(const Duration(milliseconds: 1000));
+    if (generation != _matchGeneration || isGameOver) return;
     await _showBattleAnimation("AI ACTIVATING INTEL...", Icons.psychology_alt);
+    if (generation != _matchGeneration || isGameOver) return;
     await useScanSkill(aiTarget);
   }
 
   Future<void> _triggerAITurn() async {
     if (isGameOver || isAiThinking) return;
+    final generation = _matchGeneration;
     isAiThinking = true;
     notifyListeners();
 
-    // 1. Check if Computer hit a "Reveal" perk previously and use it
-    if (currentPlayer.inventory.contains(EffectType.revealRadius) &&
-        !isGameOver) {
+    if (currentPlayer.inventory.contains(EffectType.revealRadius)) {
       await _aiCheckAndUseSkills();
     }
+    if (generation != _matchGeneration) return;
 
     while (!isGameOver && currentPlayer.id == PlayerID.player2) {
       if (currentPlayer.isStunned) {
-        await Future.delayed(const Duration(milliseconds: 1000));
+        // A scored turn may leave the AI stunned for its next action.
         currentPlayer.isStunned = false;
-        await _showBattleAnimation("COMPUTER STUNNED!", Icons.timer_off);
         _switchTurn();
         break;
       }
       await Future.delayed(
           Duration(milliseconds: 1200 + Random().nextInt(500)));
+      if (generation != _matchGeneration || isGameOver ||
+          currentPlayer.id != PlayerID.player2) break;
       final best = AIEngine.computeBestMove(grid, gridSize, aiDifficulty);
-      if (best.isNotEmpty) {
-        selectedLetter = best["letter"];
-        bool scored = await _executeMoveLogic(best["index"]);
-        if (isGameOver) break;
-        if (scored) await Future.delayed(const Duration(milliseconds: 800));
-      } else
-        break;
+      if (best.isEmpty) break;
+      selectedLetter = best["letter"] as String;
+      final scored = await _executeMoveLogic(best["index"] as int);
+      if (generation != _matchGeneration || isGameOver) break;
+      if (scored) {
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (generation != _matchGeneration) break;
+      }
     }
+    if (generation != _matchGeneration) return;
     isAiThinking = false;
-    _checkGameOver();
+    if (!_checkGameOver() && currentPlayer.id == PlayerID.player1) {
+      _startNewTurnTimer();
+    }
     notifyListeners();
   }
 
   Future<void> useScanSkill(EffectType target) async {
+    if (isGameOver || isAnimating || _timeoutInProgress || _isProcessing ||
+        !currentPlayer.inventory.contains(EffectType.revealRadius)) return;
+    if (isVsAI && currentPlayer.id == PlayerID.player1 && isAiThinking) return;
+    final generation = _matchGeneration;
     isAnimating = true;
     _timer?.cancel();
     bool found = false;
@@ -377,6 +415,7 @@ class GameProvider extends ChangeNotifier {
     currentPlayer.inventory.remove(EffectType.revealRadius);
     await _showBattleAnimation(found ? "SCAN SUCCESSFUL!" : "SCAN FAILED",
         found ? Icons.radar : Icons.search_off);
+    if (generation != _matchGeneration) return;
     isAnimating = false;
     _startNewTurnTimer();
     notifyListeners();
@@ -384,14 +423,23 @@ class GameProvider extends ChangeNotifier {
 
   void _switchTurn() {
     _timer?.cancel();
+    if (isGameOver) return;
     currentPlayer = (currentPlayer.id == PlayerID.player1) ? player2 : player1;
     if (currentPlayer.isStunned) {
-      currentPlayer.isStunned = false;
-      _showBattleAnimation("${currentPlayer.name} STUNNED!", Icons.timer_off)
-          .then((_) => _switchTurn());
+      final generation = _matchGeneration;
+      final stunnedPlayer = currentPlayer;
+      isAnimating = true; // Block taps until the skipped turn is finished.
+      notifyListeners();
+      _showBattleAnimation("${stunnedPlayer.name} STUNNED!", Icons.timer_off)
+          .then((_) {
+        if (generation != _matchGeneration || isGameOver) return;
+        stunnedPlayer.isStunned = false;
+        isAnimating = false;
+        _switchTurn();
+      });
       return;
     }
-    if (isVsAI && currentPlayer.id == PlayerID.player2 && !isGameOver) {
+    if (isVsAI && currentPlayer.id == PlayerID.player2) {
       _triggerAITurn();
     }
     _startNewTurnTimer();
@@ -400,30 +448,46 @@ class GameProvider extends ChangeNotifier {
 
   void _startNewTurnTimer() {
     _timer?.cancel();
-    if (timerLimit == null || isAnimating || isAiThinking) return;
+    if (timerLimit == null || isAnimating || isAiThinking || isGameOver) return;
     int base = timerLimit!;
-    if (_nextTurnHalfTime) {
+    if (_pendingHalfTime.remove(currentPlayer.id) == true) {
       base = (base / 2).floor().clamp(3, 30);
-      _nextTurnHalfTime = false;
     }
+    base += _pendingTimeBonuses.remove(currentPlayer.id) ?? 0;
     remainingSeconds = base;
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (remainingSeconds > 0) {
-        remainingSeconds--;
-        notifyListeners();
-      } else
+      if (isGameOver) {
+        t.cancel();
+        return;
+      }
+      if (remainingSeconds > 0) remainingSeconds--;
+      if (remainingSeconds == 0) {
         _handleTimeout();
+      } else {
+        notifyListeners();
+      }
     });
   }
 
-  void _handleTimeout() {
+  Future<void> _handleTimeout() async {
+    if (isGameOver || _timeoutInProgress || _isProcessing || isAnimating) return;
+    final generation = _matchGeneration;
+    _timeoutInProgress = true;
+    isAnimating = true;
+    _timer?.cancel();
+    remainingSeconds = 0;
     currentPlayer.lives -= 1.0;
-    _showBattleAnimation("TIMEOUT: -1 HP", Icons.hourglass_disabled).then((_) {
-      if (!_checkGameOver()) _switchTurn();
-    });
+    notifyListeners();
+    await _showBattleAnimation("TIMEOUT: -1 HP", Icons.hourglass_disabled);
+    if (generation != _matchGeneration) return;
+    _timeoutInProgress = false;
+    isAnimating = false;
+    if (!_checkGameOver()) _switchTurn();
   }
 
   bool _checkGameOver() {
+    // Saving a match or its statistics must happen exactly once.
+    if (isGameOver) return true;
     bool full = grid.every((c) => !c.isEmpty);
     bool dead = player1.lives <= 0 || player2.lives <= 0;
     if (full || dead) {
@@ -462,14 +526,17 @@ class GameProvider extends ChangeNotifier {
     lastEffectMessage = msg;
     lastEffectIcon = icon;
     notifyListeners();
+    final generation = _matchGeneration;
     await Future.delayed(const Duration(milliseconds: 2000));
+    if (generation != _matchGeneration) return;
     lastEffectMessage = "";
     lastEffectIcon = null;
     notifyListeners();
   }
 
   void selectLetter(String l) {
-    if (!isAiThinking && !isAnimating) {
+    if (!isAiThinking && !isAnimating && !_isProcessing &&
+        !_timeoutInProgress && !isGameOver) {
       selectedLetter = l;
       notifyListeners();
     }

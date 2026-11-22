@@ -219,11 +219,7 @@ class SettingsScreen extends StatelessWidget {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
-              // Implementation of data clearing (needs to be added to StorageService)
-              // For now, it resets keys
-              await StorageService.setInt(AppConstants.keyGamesPlayed, 0);
-              await StorageService.setInt(AppConstants.keyP1Wins, 0);
-              await StorageService.setInt(AppConstants.keyP2Wins, 0);
+              await StorageService.resetAllData();
               if (context.mounted) Navigator.pop(context);
             },
             child: const Text("DELETE EVERYTHING",

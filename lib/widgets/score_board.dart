@@ -143,8 +143,8 @@ class ScoreBoard extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(2),
             child: LinearProgressIndicator(
-              value: (p.lives / 10)
-                  .clamp(0.0, 2.0), // Allows bar to show up to double normal HP
+              value: (p.lives / 10).clamp(0.0, 1.0),
+              // The progress indicator only accepts 0..1; numeric HP can exceed 10.
               backgroundColor: Colors.white10,
               valueColor: AlwaysStoppedAnimation<Color>(
                 p.lives > 10

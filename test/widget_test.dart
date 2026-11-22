@@ -1,28 +1,29 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sos_grid_battle/main.dart';
-import 'package:sos_grid_battle/widgets/game_logo.dart';
+import 'package:sos_grid_battle/screens/splash_screen.dart';
 import 'package:sos_grid_battle/services/storage_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  // Setup for SharedPreferences to prevent the test from crashing during init
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await StorageService.init();
   });
 
-  testWidgets('App smoke test - verifies splash screen and logo load',
+  testWidgets('App opens on splash and navigates to the main menu',
       (WidgetTester tester) async {
-    // 1. Build our app (SOSGridBattle is the class name in main.dart)
     await tester.pumpWidget(const SOSGridBattle());
 
-    // 2. Verify that the GameLogo widget is present on the splash screen
-    expect(find.byType(GameLogo), findsOneWidget);
+    // The current splash uses a PNG logo, not the old GameLogo widget.
+    expect(find.byType(SplashScreen), findsOneWidget);
+    expect(find.text('LoKiJ PRESENTS'), findsOneWidget);
+    expect(find.byType(Image), findsWidgets);
 
-    // 3. Verify that the text "GRID BATTLE" is visible
-    expect(find.text('GRID BATTLE'), findsOneWidget);
-
-    // 4. Verify that counter-related widgets from the old test DON'T exist
-    expect(find.text('0'), findsNothing);
+    // Advance the 4-second splash delay and the 1-second route animation.
+    // Avoid pumpAndSettle: the splash intentionally repeats an animation.
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('SOLO VS COMPUTER'), findsOneWidget);
   });
 }
